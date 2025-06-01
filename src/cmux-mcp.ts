@@ -344,6 +344,13 @@ server.tool(
   safe(async () => ok(cmux('list-windows'))),
 );
 
+server.tool(
+  'cmux_current_window',
+  'Get the currently focused window.',
+  {},
+  safe(async () => ok(cmux('current-window'))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
