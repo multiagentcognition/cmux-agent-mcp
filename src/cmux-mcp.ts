@@ -874,6 +874,19 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_clear_progress',
+  'Clear the sidebar progress indicator.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ workspace }) => {
+    const args = ['clear-progress'];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
