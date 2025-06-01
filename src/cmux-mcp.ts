@@ -472,6 +472,24 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_reorder_surface',
+  'Reorder a tab within its pane.',
+  {
+    surface: z.string().describe('Surface ref to reorder'),
+    index: z.number().optional().describe('Target index position'),
+    before: z.string().optional().describe('Place before this surface ref'),
+    after: z.string().optional().describe('Place after this surface ref'),
+  },
+  safeMut(async ({ surface, index, before, after }) => {
+    const args = ['reorder-surface', '--surface', surface];
+    if (index !== undefined) args.push('--index', String(index));
+    if (before) args.push('--before', before);
+    if (after) args.push('--after', after);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
