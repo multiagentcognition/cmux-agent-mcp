@@ -318,6 +318,21 @@ server.tool(
   safeMut(async ({ workspace }) => ok(cmux('close-workspace', '--workspace', workspace))),
 );
 
+server.tool(
+  'cmux_rename_workspace',
+  'Rename a workspace.',
+  {
+    title: z.string().describe('New workspace title'),
+    workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
+  },
+  safeMut(async ({ title, workspace }) => {
+    const args = ['rename-workspace'];
+    if (workspace) args.push('--workspace', workspace);
+    args.push(title);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
