@@ -446,6 +446,32 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_move_surface',
+  'Move a surface to a different pane, workspace, or window.',
+  {
+    surface: z.string().describe('Surface ID/ref to move'),
+    pane: z.string().optional().describe('Target pane ID/ref'),
+    workspace: z.string().optional().describe('Target workspace ID/ref'),
+    window: z.string().optional().describe('Target window ID/ref'),
+    before: z.string().optional().describe('Place before this surface'),
+    after: z.string().optional().describe('Place after this surface'),
+    index: z.number().optional().describe('Target index position'),
+    focus: z.boolean().optional().describe('Focus after moving'),
+  },
+  safeMut(async ({ surface, pane, workspace, window: win, before, after, index, focus }) => {
+    const args = ['move-surface', '--surface', surface];
+    if (pane) args.push('--pane', pane);
+    if (workspace) args.push('--workspace', workspace);
+    if (win) args.push('--window', win);
+    if (before) args.push('--before', before);
+    if (after) args.push('--after', after);
+    if (index !== undefined) args.push('--index', String(index));
+    if (focus !== undefined) args.push('--focus', String(focus));
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
