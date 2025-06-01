@@ -117,6 +117,18 @@ function isCmuxRunning(): boolean {
 // MCP Server
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Response helpers
+// ---------------------------------------------------------------------------
+
+function ok(data: unknown): { content: { type: 'text'; text: string }[] } {
+  return { content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }] };
+}
+
+function err(message: string): { content: { type: 'text'; text: string }[]; isError: true } {
+  return { content: [{ type: 'text', text: message }], isError: true };
+}
+
 const server = new McpServer({ name: 'cmux-swarm', version: '0.1.0' });
 
 // ---------------------------------------------------------------------------
