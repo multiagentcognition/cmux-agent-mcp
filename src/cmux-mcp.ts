@@ -309,6 +309,15 @@ server.tool(
   safe(async ({ workspace }) => ok(cmux('select-workspace', '--workspace', workspace))),
 );
 
+server.tool(
+  'cmux_close_workspace',
+  'Close a workspace and all its panes.',
+  {
+    workspace: z.string().describe('Workspace ID or ref to close'),
+  },
+  safeMut(async ({ workspace }) => ok(cmux('close-workspace', '--workspace', workspace))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
