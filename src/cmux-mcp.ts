@@ -89,6 +89,11 @@ function cmux(...args: string[]): string {
   }
 }
 
+function cmuxJson(...args: string[]): any {
+  const raw = cmux(...args, '--json');
+  return JSON.parse(raw);
+}
+
 // ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
