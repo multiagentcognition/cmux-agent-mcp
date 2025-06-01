@@ -94,6 +94,16 @@ function cmuxJson(...args: string[]): any {
   return JSON.parse(raw);
 }
 
+function isCmuxInstalled(): boolean {
+  const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
+  if (existsSync(bundled)) return true;
+  try {
+    execSync('which cmux', { encoding: 'utf8', timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 function isCmuxRunning(): boolean {
   try {
     cmux('ping');
