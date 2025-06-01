@@ -54,6 +54,12 @@ const CLI_DEFS: Record<string, CliDef> = {
     skipPermFlags: [],
     label: 'OpenCode',
   },
+  goose: {
+    bin: 'goose',
+    skipPermFlags: [],
+    skipPermEnv: { GOOSE_MODE: 'auto' },
+    label: 'Goose',
+  },
 };
 
 // ---------------------------------------------------------------------------
