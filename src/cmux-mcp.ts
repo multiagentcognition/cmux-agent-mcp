@@ -551,6 +551,19 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_list_pane_surfaces',
+  'List all pane surfaces in a workspace — returns the surface refs needed by other tools.',
+  {
+    workspace: z.string().optional().describe('Workspace ref'),
+  },
+  safe(async ({ workspace }) => {
+    const args = ['list-pane-surfaces'];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
