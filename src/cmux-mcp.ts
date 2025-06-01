@@ -376,6 +376,21 @@ server.tool(
   safeMut(async ({ window: win }) => ok(cmux('close-window', '--window', win))),
 );
 
+server.tool(
+  'cmux_rename_window',
+  'Rename a window.',
+  {
+    title: z.string().describe('New window title'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safeMut(async ({ title, workspace }) => {
+    const args = ['rename-window'];
+    if (workspace) args.push('--workspace', workspace);
+    args.push(title);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
