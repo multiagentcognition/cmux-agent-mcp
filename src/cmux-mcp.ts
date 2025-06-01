@@ -744,6 +744,20 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_send_key',
+  'Send a key press (enter, tab, escape, backspace, delete, up, down, left, right, ctrl+c, etc.).',
+  {
+    key: z.string().describe('Key to send'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+  },
+  safe(async ({ key, workspace, surface }) => {
+    const args = ['send-key', ...wsArgs(workspace, surface), key];
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
