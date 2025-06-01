@@ -919,6 +919,30 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// H. NOTIFICATIONS
+// ============================================================================
+
+server.tool(
+  'cmux_notify',
+  'Send a notification to a workspace/surface.',
+  {
+    title: z.string().describe('Notification title'),
+    subtitle: z.string().optional().describe('Notification subtitle'),
+    body: z.string().optional().describe('Notification body'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+  },
+  safe(async ({ title, subtitle, body, workspace, surface }) => {
+    const args = ['notify', '--title', title];
+    if (subtitle) args.push('--subtitle', subtitle);
+    if (body) args.push('--body', body);
+    const ws = wsArgs(workspace, surface);
+    args.push(...ws);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
