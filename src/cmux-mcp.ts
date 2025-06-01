@@ -887,6 +887,25 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_log',
+  'Write a log entry to the sidebar.',
+  {
+    message: z.string().describe('Log message'),
+    level: z.enum(['info', 'progress', 'success', 'warning', 'error']).optional().describe('Log level'),
+    source: z.string().optional().describe('Source name'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ message, level, source, workspace }) => {
+    const args = ['log'];
+    if (level) args.push('--level', level);
+    if (source) args.push('--source', source);
+    if (workspace) args.push('--workspace', workspace);
+    args.push('--', message);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
