@@ -1,0 +1,45 @@
+{
+  "name": "cmux-swarm",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CMUX MCP Server — programmable terminal control plane for multi-agent AI workflows",
+  "license": "MIT",
+  "keywords": [
+    "cmux",
+    "ghostty",
+    "mcp",
+    "terminal",
+    "multi-agent",
+    "ai",
+    "claude",
+    "codex",
+    "gemini",
+    "opencode",
+    "orchestration"
+  ],
+  "main": "./build/cli.js",
+  "bin": {
+    "cmux-swarm": "build/cli.js"
+  },
+  "files": [
+    "build/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "postinstall": "node build/postinstall.js",
+    "server": "node build/cli.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
