@@ -237,6 +237,19 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_identify',
+  'Show context info for the current CMUX session — focused window, workspace, pane, surface refs. Call this first to discover IDs for other tools.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+  },
+  safe(async ({ workspace, surface }) => {
+    const args = ['identify', ...wsArgs(workspace, surface)];
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
