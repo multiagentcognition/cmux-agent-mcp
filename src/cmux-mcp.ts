@@ -367,6 +367,15 @@ server.tool(
   safe(async ({ window: win }) => ok(cmux('focus-window', '--window', win))),
 );
 
+server.tool(
+  'cmux_close_window',
+  'Close a window.',
+  {
+    window: z.string().describe('Window ID to close'),
+  },
+  safeMut(async ({ window: win }) => ok(cmux('close-window', '--window', win))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
