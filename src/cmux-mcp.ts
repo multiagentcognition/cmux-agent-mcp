@@ -858,6 +858,22 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_set_progress',
+  'Set a sidebar progress indicator (0.0 to 1.0).',
+  {
+    progress: z.number().min(0).max(1).describe('Progress value (0.0 to 1.0)'),
+    label: z.string().optional().describe('Progress label text'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ progress, label, workspace }) => {
+    const args = ['set-progress', String(progress)];
+    if (label) args.push('--label', label);
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
