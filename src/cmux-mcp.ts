@@ -391,6 +391,29 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// D. SURFACE (TAB) MANAGEMENT
+// ============================================================================
+
+server.tool(
+  'cmux_new_surface',
+  'Create a new surface (tab) — terminal or browser.',
+  {
+    type: z.enum(['terminal', 'browser']).optional().describe('Surface type (default: terminal)'),
+    pane: z.string().optional().describe('Pane ID/ref to create surface in'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    url: z.string().optional().describe('URL for browser surfaces'),
+  },
+  safeMut(async ({ type, pane, workspace, url }) => {
+    const args = ['new-surface'];
+    if (type) args.push('--type', type);
+    if (pane) args.push('--pane', pane);
+    if (workspace) args.push('--workspace', workspace);
+    if (url) args.push('--url', url);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
