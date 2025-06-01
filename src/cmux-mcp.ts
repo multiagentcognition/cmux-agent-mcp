@@ -645,6 +645,21 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_swap_pane',
+  'Swap two panes.',
+  {
+    pane: z.string().describe('Source pane ID/ref'),
+    target_pane: z.string().describe('Target pane ID/ref'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safeMut(async ({ pane, target_pane, workspace }) => {
+    const args = ['swap-pane', '--pane', pane, '--target-pane', target_pane];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
