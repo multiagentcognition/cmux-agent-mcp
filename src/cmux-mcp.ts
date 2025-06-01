@@ -1155,6 +1155,22 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_console',
+  'Get or clear browser console logs/errors.',
+  {
+    type: z.enum(['console', 'errors']).describe('Log type'),
+    action: z.enum(['list', 'clear']).describe('Action'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ type, action, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push(type, action);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
