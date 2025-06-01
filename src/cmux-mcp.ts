@@ -1119,6 +1119,25 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_get',
+  'Get data from the browser page (url, title, text, html, value, attribute, element count).',
+  {
+    property: z.enum(['url', 'title', 'text', 'html', 'value', 'attr', 'count', 'box', 'styles']).describe('Property to get'),
+    selector: z.string().optional().describe('CSS selector'),
+    attribute: z.string().optional().describe('Attribute name (required for attr)'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ property, selector, attribute, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('get', property);
+    if (selector) args.push(selector);
+    if (attribute) args.push(attribute);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
