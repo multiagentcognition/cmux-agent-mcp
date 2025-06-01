@@ -73,6 +73,22 @@ function cmuxBin(): string {
   return 'cmux';
 }
 
+function cmux(...args: string[]): string {
+  try {
+    const env: Record<string, string> = { ...process.env as Record<string, string> };
+    if (process.env['CMUX_SOCKET_PATH']) {
+      env['CMUX_SOCKET_PATH'] = process.env['CMUX_SOCKET_PATH'];
+    }
+    return execFileSync(cmuxBin(), args, {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env,
+    }).trim();
+  } catch (err: any) {
+    throw new Error(`cmux ${args.join(' ')} failed: ${err.stderr || err.message}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
