@@ -358,6 +358,15 @@ server.tool(
   safeMut(async () => ok(cmux('new-window'))),
 );
 
+server.tool(
+  'cmux_focus_window',
+  'Focus a specific window.',
+  {
+    window: z.string().describe('Window ID to focus'),
+  },
+  safe(async ({ window: win }) => ok(cmux('focus-window', '--window', win))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
