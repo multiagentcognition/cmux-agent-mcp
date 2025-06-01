@@ -8,7 +8,9 @@
  */
 
 import { execFileSync, execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -104,6 +106,7 @@ function isCmuxInstalled(): boolean {
     return false;
   }
 }
+
 function isCmuxRunning(): boolean {
   try {
     cmux('ping');
@@ -112,10 +115,6 @@ function isCmuxRunning(): boolean {
     return false;
   }
 }
-
-// ---------------------------------------------------------------------------
-// MCP Server
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Response helpers
@@ -129,7 +128,63 @@ function err(message: string): { content: { type: 'text'; text: string }[]; isEr
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
+/** Wrap a tool handler with standard error handling */
+function safe(fn: (...args: any[]) => any) {
+  return async (...args: any[]) => {
+    try {
+      return await fn(...args);
+    } catch (e: any) {
+      return err(e.message ?? String(e));
+    }
+  };
+}
+
+/** Wrap a MUTATING tool handler — auto-saves session after success */
+function safeMut(fn: (...args: any[]) => any) {
+  return async (...args: any[]) => {
+    try {
+      const result = await fn(...args);
+      scheduleAutoSave();
+      return result;
+    } catch (e: any) {
+      return err(e.message ?? String(e));
+    }
+  };
+}
+
+/** Default workspace/surface from params or env */
+function wsArgs(workspace?: string, surface?: string): string[] {
+  const args: string[] = [];
+  const ws = workspace ?? process.env['CMUX_WORKSPACE_ID'];
+  const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+  if (ws) args.push('--workspace', ws);
+  if (sf) args.push('--surface', sf);
+  return args;
+}
+
+// ---------------------------------------------------------------------------
+// Auto-save — save manifest after mutating operations
+// ---------------------------------------------------------------------------
+
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleAutoSave(): void {
+  // Will be implemented with session management
+  return;
+}
+
+// ---------------------------------------------------------------------------
+// MCP Server
+// ---------------------------------------------------------------------------
+
 const server = new McpServer({ name: 'cmux-swarm', version: '0.1.0' });
+
+// ---------------------------------------------------------------------------
+// ID Format Note:
+// CMUX uses ref format for IDs: "workspace:N", "surface:N", "pane:N", "tab:N", "window:N"
+// where N is a number. Always use the ref format (e.g., "surface:8") not bare numbers ("8").
+// Use cmux_identify, cmux_tree, cmux_list_panes, or cmux_list_pane_surfaces to discover refs.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Server startup
