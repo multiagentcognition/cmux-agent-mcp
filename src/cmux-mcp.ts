@@ -845,6 +845,19 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_list_status',
+  'List all sidebar status entries for a workspace.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ workspace }) => {
+    const args = ['list-status'];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
