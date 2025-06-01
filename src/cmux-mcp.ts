@@ -186,6 +186,42 @@ const server = new McpServer({ name: 'cmux-swarm', version: '0.1.0' });
 // Use cmux_identify, cmux_tree, cmux_list_panes, or cmux_list_pane_surfaces to discover refs.
 // ---------------------------------------------------------------------------
 
+// ============================================================================
+// A. STATUS & DISCOVERY
+// ============================================================================
+
+server.tool(
+  'cmux_status',
+  'Check if CMUX is installed and running. Shows project config and full hierarchy.',
+  {},
+  safe(async () => {
+    const installed = isCmuxInstalled();
+    const running = installed ? isCmuxRunning() : false;
+
+    if (!running) {
+      return ok({
+        installed,
+        running: false,
+        project_root: PROJECT_ROOT ?? '(not set)',
+        note: installed
+          ? 'CMUX is installed but not running. Open cmux.app to start it.'
+          : 'CMUX is not installed. Install with: brew tap manaflow-ai/cmux && brew install --cask cmux',
+      });
+    }
+
+    let tree: string | undefined;
+    try { tree = cmux('tree', '--all'); } catch { /* ignore */ }
+
+    return ok({
+      installed: true,
+      running: true,
+      project_root: PROJECT_ROOT ?? '(not set)',
+      supported_clis: Object.keys(CLI_DEFS),
+      tree,
+    });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
