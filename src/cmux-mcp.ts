@@ -300,6 +300,15 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_select_workspace',
+  'Switch to a specific workspace.',
+  {
+    workspace: z.string().describe('Workspace ID or ref to switch to'),
+  },
+  safe(async ({ workspace }) => ok(cmux('select-workspace', '--workspace', workspace))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
