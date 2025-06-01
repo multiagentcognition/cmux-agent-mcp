@@ -728,6 +728,22 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_send_submit',
+  'Send text and press Enter — primary method for injecting commands and prompts.',
+  {
+    text: z.string().describe('Text to send'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+  },
+  safeMut(async ({ text, workspace, surface }) => {
+    const ws = wsArgs(workspace, surface);
+    cmux('send', ...ws, text);
+    cmux('send-key', ...ws, 'enter');
+    return ok({ sent: text, submitted: true });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
