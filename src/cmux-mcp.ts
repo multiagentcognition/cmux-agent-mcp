@@ -427,6 +427,25 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_rename_tab',
+  'Rename a tab.',
+  {
+    title: z.string().describe('New tab title'),
+    workspace: z.string().optional().describe('Workspace ref'),
+    tab: z.string().optional().describe('Tab ref'),
+    surface: z.string().optional().describe('Surface ref'),
+  },
+  safeMut(async ({ title, workspace, tab, surface }) => {
+    const args = ['rename-tab'];
+    if (workspace) args.push('--workspace', workspace);
+    if (tab) args.push('--tab', tab);
+    if (surface) args.push('--surface', surface);
+    args.push(title);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
