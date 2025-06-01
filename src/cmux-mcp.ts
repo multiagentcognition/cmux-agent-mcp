@@ -1033,6 +1033,21 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_eval',
+  'Execute JavaScript in the browser page.',
+  {
+    script: z.string().describe('JavaScript code to execute'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ script, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('eval', script);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
