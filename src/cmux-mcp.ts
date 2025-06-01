@@ -660,6 +660,23 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_break_pane',
+  'Move a pane to its own new workspace.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    pane: z.string().optional().describe('Pane ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+  },
+  safeMut(async ({ workspace, pane, surface }) => {
+    const args = ['break-pane'];
+    if (workspace) args.push('--workspace', workspace);
+    if (pane) args.push('--pane', pane);
+    if (surface) args.push('--surface', surface);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
