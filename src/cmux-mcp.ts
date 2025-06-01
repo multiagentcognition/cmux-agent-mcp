@@ -614,6 +614,20 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_focus_pane',
+  'Focus a specific pane.',
+  {
+    pane: z.string().describe('Pane ID/ref to focus'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ pane, workspace }) => {
+    const args = ['focus-pane', '--pane', pane];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
