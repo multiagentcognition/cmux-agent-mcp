@@ -758,6 +758,22 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_send_panel',
+  'Send text to a specific panel.',
+  {
+    panel: z.string().describe('Panel ID/ref'),
+    text: z.string().describe('Text to send'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ panel, text, workspace }) => {
+    const args = ['send-panel', '--panel', panel];
+    if (workspace) args.push('--workspace', workspace);
+    args.push(text);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
