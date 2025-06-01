@@ -943,6 +943,13 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_list_notifications',
+  'List all notifications.',
+  {},
+  safe(async () => ok(cmux('list-notifications'))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
