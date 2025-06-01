@@ -677,6 +677,24 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_join_pane',
+  'Join a pane into another pane — merges two split panes together.',
+  {
+    target_pane: z.string().describe('Target pane ref to join into'),
+    workspace: z.string().optional().describe('Workspace ref'),
+    pane: z.string().optional().describe('Source pane ref to move'),
+    surface: z.string().optional().describe('Surface ref'),
+  },
+  safeMut(async ({ target_pane, workspace, pane, surface }) => {
+    const args = ['join-pane', '--target-pane', target_pane];
+    if (workspace) args.push('--workspace', workspace);
+    if (pane) args.push('--pane', pane);
+    if (surface) args.push('--surface', surface);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
