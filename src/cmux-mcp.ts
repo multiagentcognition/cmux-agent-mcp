@@ -522,6 +522,18 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_drag_surface_to_split',
+  'Move a tab into a split position — turns a tab into its own pane by dragging it to a side.',
+  {
+    surface: z.string().describe('Surface ref to drag'),
+    direction: z.enum(['left', 'right', 'up', 'down']).describe('Direction to split into'),
+  },
+  safeMut(async ({ surface, direction }) => {
+    return ok(cmux('drag-surface-to-split', '--surface', surface, direction));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
