@@ -977,6 +977,23 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_navigate',
+  'Navigate the browser: goto a URL, or go back/forward/reload.',
+  {
+    action: z.enum(['goto', 'back', 'forward', 'reload']).describe('Navigation action'),
+    url: z.string().optional().describe('URL (required for goto)'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ action, url, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push(action);
+    if (action === 'goto' && url) args.push(url);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
