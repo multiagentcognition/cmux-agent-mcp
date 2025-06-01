@@ -595,6 +595,25 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_new_pane',
+  'Create a new pane (terminal or browser) in a workspace.',
+  {
+    type: z.enum(['terminal', 'browser']).optional().describe('Pane type'),
+    direction: z.enum(['left', 'right', 'up', 'down']).optional().describe('Split direction'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    url: z.string().optional().describe('URL for browser panes'),
+  },
+  safeMut(async ({ type, direction, workspace, url }) => {
+    const args = ['new-pane'];
+    if (type) args.push('--type', type);
+    if (direction) args.push('--direction', direction);
+    if (workspace) args.push('--workspace', workspace);
+    if (url) args.push('--url', url);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
