@@ -250,6 +250,23 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_find',
+  'Search across windows and panes by content or title.',
+  {
+    query: z.string().describe('Search query'),
+    content: z.boolean().optional().describe('Search pane content (not just titles)'),
+    select: z.boolean().optional().describe('Auto-select the matching pane'),
+  },
+  safe(async ({ query, content, select }) => {
+    const args = ['find-window'];
+    if (content) args.push('--content');
+    if (select) args.push('--select');
+    args.push(query);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
