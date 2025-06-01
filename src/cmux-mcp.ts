@@ -1063,6 +1063,22 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_fill',
+  'Fill an input field in the browser.',
+  {
+    selector: z.string().describe('CSS selector of the input'),
+    value: z.string().describe('Value to fill'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ selector, value, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('fill', selector, value);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
