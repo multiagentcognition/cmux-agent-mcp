@@ -278,6 +278,13 @@ server.tool(
   safe(async () => ok(cmux('list-workspaces'))),
 );
 
+server.tool(
+  'cmux_current_workspace',
+  'Get the currently active workspace.',
+  {},
+  safe(async () => ok(cmux('current-workspace'))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
