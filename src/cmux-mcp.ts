@@ -23,6 +23,25 @@ const PROJECT_ROOT: string | undefined =
   process.cwd();
 
 // ---------------------------------------------------------------------------
+// CLI Definitions — all supported AI coding CLIs
+// ---------------------------------------------------------------------------
+
+type CliDef = {
+  bin: string;
+  skipPermFlags: string[];
+  skipPermEnv?: Record<string, string>;
+  label: string;
+};
+
+const CLI_DEFS: Record<string, CliDef> = {
+  claude: {
+    bin: 'claude',
+    skipPermFlags: ['--dangerously-skip-permissions'],
+    label: 'Claude Code',
+  },
+};
+
+// ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
 
