@@ -906,6 +906,19 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_sidebar_state',
+  'Get current sidebar state (cwd, git branch, ports, status, progress, logs).',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ workspace }) => {
+    const args = ['sidebar-state'];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
