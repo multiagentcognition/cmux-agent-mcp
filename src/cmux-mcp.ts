@@ -957,6 +957,26 @@ server.tool(
   safe(async () => ok(cmux('clear-notifications'))),
 );
 
+// ============================================================================
+// I. BROWSER AUTOMATION
+// ============================================================================
+
+server.tool(
+  'cmux_browser_open',
+  'Open a browser surface (split in the current workspace).',
+  {
+    url: z.string().optional().describe('URL to open'),
+    surface: z.string().optional().describe('Existing browser surface ID/ref'),
+  },
+  safe(async ({ url, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('open');
+    if (url) args.push(url);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
