@@ -950,6 +950,13 @@ server.tool(
   safe(async () => ok(cmux('list-notifications'))),
 );
 
+server.tool(
+  'cmux_clear_notifications',
+  'Clear all notifications.',
+  {},
+  safe(async () => ok(cmux('clear-notifications'))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
