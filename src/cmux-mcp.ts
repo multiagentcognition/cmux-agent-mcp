@@ -1016,6 +1016,23 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_screenshot',
+  'Take a screenshot of the browser page.',
+  {
+    out: z.string().optional().describe('Output file path'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ out, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('screenshot');
+    if (out) args.push('--out', out);
+    args.push('--json');
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
