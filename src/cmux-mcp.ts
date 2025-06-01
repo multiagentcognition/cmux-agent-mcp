@@ -831,6 +831,20 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_clear_status',
+  'Clear a sidebar status key.',
+  {
+    key: z.string().describe('Status key to clear'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ key, workspace }) => {
+    const args = ['clear-status', key];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
