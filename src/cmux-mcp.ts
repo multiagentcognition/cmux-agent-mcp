@@ -44,6 +44,11 @@ const CLI_DEFS: Record<string, CliDef> = {
     skipPermFlags: ['--no-sandbox'],
     label: 'Gemini CLI',
   },
+  codex: {
+    bin: 'codex',
+    skipPermFlags: ['-a', 'never'],
+    label: 'Codex CLI',
+  },
 };
 
 // ---------------------------------------------------------------------------
