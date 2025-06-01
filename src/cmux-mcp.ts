@@ -774,6 +774,23 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_read_screen',
+  'Read terminal output from a surface.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+    scrollback: z.boolean().optional().describe('Include scrollback buffer'),
+    lines: z.number().optional().describe('Number of lines to read'),
+  },
+  safe(async ({ workspace, surface, scrollback, lines }) => {
+    const args = ['read-screen', ...wsArgs(workspace, surface)];
+    if (scrollback) args.push('--scrollback');
+    if (lines !== undefined) args.push('--lines', String(lines));
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
