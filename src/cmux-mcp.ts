@@ -285,6 +285,21 @@ server.tool(
   safe(async () => ok(cmux('current-workspace'))),
 );
 
+server.tool(
+  'cmux_new_workspace',
+  'Create a new workspace with optional working directory and command.',
+  {
+    cwd: z.string().optional().describe('Working directory for the new workspace'),
+    command: z.string().optional().describe('Command to run in the initial pane'),
+  },
+  safeMut(async ({ cwd, command }) => {
+    const args = ['new-workspace'];
+    if (cwd) args.push('--cwd', cwd);
+    if (command) args.push('--command', command);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
