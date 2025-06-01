@@ -222,6 +222,21 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_tree',
+  'Show full hierarchy tree of windows, workspaces, panes, surfaces, and panels.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref to scope the tree'),
+    all: z.boolean().optional().describe('Show all windows (default: current)'),
+  },
+  safe(async ({ workspace, all }) => {
+    const args = ['tree'];
+    if (all) args.push('--all');
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
