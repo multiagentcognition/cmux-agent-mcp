@@ -1079,6 +1079,22 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_type',
+  'Type text into an element in the browser (key by key).',
+  {
+    selector: z.string().describe('CSS selector of the element'),
+    text: z.string().describe('Text to type'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ selector, text, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('type', selector, text);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
