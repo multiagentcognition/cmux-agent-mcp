@@ -534,6 +534,23 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// E. PANE / SPLIT OPERATIONS
+// ============================================================================
+
+server.tool(
+  'cmux_list_panes',
+  'List all panes in a workspace.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
+  },
+  safe(async ({ workspace }) => {
+    const args = ['list-panes'];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
