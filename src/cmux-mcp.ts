@@ -414,6 +414,19 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_close_surface',
+  'Close a surface (tab).',
+  {
+    surface: z.string().optional().describe('Surface ID/ref to close'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safeMut(async ({ surface, workspace }) => {
+    const args = ['close-surface', ...wsArgs(workspace, surface)];
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
