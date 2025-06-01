@@ -63,6 +63,17 @@ const CLI_DEFS: Record<string, CliDef> = {
 };
 
 // ---------------------------------------------------------------------------
+// CMUX CLI Helpers
+// ---------------------------------------------------------------------------
+
+function cmuxBin(): string {
+  if (process.env['CMUX_BIN']) return process.env['CMUX_BIN'];
+  const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
+  if (existsSync(bundled)) return bundled;
+  return 'cmux';
+}
+
+// ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
 
