@@ -351,6 +351,13 @@ server.tool(
   safe(async () => ok(cmux('current-window'))),
 );
 
+server.tool(
+  'cmux_new_window',
+  'Create a new window.',
+  {},
+  safeMut(async () => ok(cmux('new-window'))),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
