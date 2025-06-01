@@ -628,6 +628,23 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_resize_pane',
+  'Resize a pane in a direction.',
+  {
+    pane: z.string().describe('Pane ID/ref to resize'),
+    direction: z.enum(['L', 'R', 'U', 'D']).describe('Resize direction'),
+    amount: z.number().optional().describe('Resize amount in cells'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safeMut(async ({ pane, direction, amount, workspace }) => {
+    const args = ['resize-pane', '--pane', pane, `-${direction}`];
+    if (amount !== undefined) args.push('--amount', String(amount));
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
