@@ -1095,6 +1095,30 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_wait',
+  'Wait for a condition in the browser (selector, text, URL, load state).',
+  {
+    selector: z.string().optional().describe('CSS selector to wait for'),
+    text: z.string().optional().describe('Text to wait for'),
+    url_contains: z.string().optional().describe('Wait until URL contains this string'),
+    load_state: z.enum(['interactive', 'complete']).optional().describe('Wait for load state'),
+    timeout_ms: z.number().optional().describe('Timeout in milliseconds'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ selector, text, url_contains, load_state, timeout_ms, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('wait');
+    if (selector) args.push('--selector', selector);
+    if (text) args.push('--text', text);
+    if (url_contains) args.push('--url-contains', url_contains);
+    if (load_state) args.push('--load-state', load_state);
+    if (timeout_ms !== undefined) args.push('--timeout-ms', String(timeout_ms));
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
