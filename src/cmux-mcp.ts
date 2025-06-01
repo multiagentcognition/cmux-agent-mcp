@@ -510,6 +510,18 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_move_workspace_to_window',
+  'Move a workspace to a different window without closing it.',
+  {
+    workspace: z.string().describe('Workspace ref to move'),
+    window: z.string().describe('Target window ref'),
+  },
+  safeMut(async ({ workspace, window: win }) => {
+    return ok(cmux('move-workspace-to-window', '--workspace', workspace, '--window', win));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
