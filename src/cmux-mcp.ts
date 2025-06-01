@@ -49,6 +49,11 @@ const CLI_DEFS: Record<string, CliDef> = {
     skipPermFlags: ['-a', 'never'],
     label: 'Codex CLI',
   },
+  opencode: {
+    bin: 'opencode',
+    skipPermFlags: [],
+    label: 'OpenCode',
+  },
 };
 
 // ---------------------------------------------------------------------------
