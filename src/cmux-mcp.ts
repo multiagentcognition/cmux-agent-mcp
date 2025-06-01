@@ -94,6 +94,15 @@ function cmuxJson(...args: string[]): any {
   return JSON.parse(raw);
 }
 
+function isCmuxRunning(): boolean {
+  try {
+    cmux('ping');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
