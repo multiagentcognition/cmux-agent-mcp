@@ -39,6 +39,11 @@ const CLI_DEFS: Record<string, CliDef> = {
     skipPermFlags: ['--dangerously-skip-permissions'],
     label: 'Claude Code',
   },
+  gemini: {
+    bin: 'gemini',
+    skipPermFlags: ['--no-sandbox'],
+    label: 'Gemini CLI',
+  },
 };
 
 // ---------------------------------------------------------------------------
