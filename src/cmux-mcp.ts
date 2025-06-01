@@ -994,6 +994,28 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_snapshot',
+  'Get a DOM accessibility snapshot of the browser page.',
+  {
+    interactive: z.boolean().optional().describe('Include interactive elements only'),
+    compact: z.boolean().optional().describe('Compact output'),
+    max_depth: z.number().optional().describe('Max DOM depth'),
+    selector: z.string().optional().describe('CSS selector to scope snapshot'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ interactive, compact, max_depth, selector, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('snapshot');
+    if (interactive) args.push('--interactive');
+    if (compact) args.push('--compact');
+    if (max_depth !== undefined) args.push('--max-depth', String(max_depth));
+    if (selector) args.push('--selector', selector);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
