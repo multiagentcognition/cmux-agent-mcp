@@ -1138,6 +1138,23 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_browser_tab',
+  'Manage browser tabs (new, list, switch, close).',
+  {
+    action: z.enum(['new', 'list', 'switch', 'close']).describe('Tab action'),
+    tab_index: z.string().optional().describe('Tab index (for switch/close)'),
+    surface: z.string().optional().describe('Browser surface ID/ref'),
+  },
+  safe(async ({ action, tab_index, surface }) => {
+    const args = ['browser'];
+    if (surface) args.push('--surface', surface);
+    args.push('tab', action);
+    if (tab_index) args.push(tab_index);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
