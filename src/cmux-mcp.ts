@@ -577,6 +577,24 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_new_split',
+  'Split an existing pane in a given direction.',
+  {
+    direction: z.enum(['left', 'right', 'up', 'down']).describe('Split direction'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref to split from'),
+    panel: z.string().optional().describe('Panel ID/ref to split from'),
+  },
+  safeMut(async ({ direction, workspace, surface, panel }) => {
+    const args = ['new-split', direction];
+    if (workspace) args.push('--workspace', workspace);
+    if (surface) args.push('--surface', surface);
+    if (panel) args.push('--panel', panel);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
