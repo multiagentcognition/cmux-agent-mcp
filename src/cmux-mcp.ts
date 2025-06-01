@@ -808,6 +808,29 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// G. SIDEBAR METADATA
+// ============================================================================
+
+server.tool(
+  'cmux_set_status',
+  'Set a sidebar metadata status pill (key-value badge) for a workspace.',
+  {
+    key: z.string().describe('Status key (unique identifier)'),
+    value: z.string().describe('Status value to display'),
+    icon: z.string().optional().describe('Icon name'),
+    color: z.string().optional().describe('Color hex'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ key, value, icon, color, workspace }) => {
+    const args = ['set-status', key, value];
+    if (icon) args.push('--icon', icon);
+    if (color) args.push('--color', color);
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
