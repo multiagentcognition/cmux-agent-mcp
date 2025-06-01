@@ -695,6 +695,21 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_respawn_pane',
+  'Restart a pane process.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+    command: z.string().optional().describe('Command to run (default: original shell)'),
+  },
+  safeMut(async ({ workspace, surface, command }) => {
+    const args = ['respawn-pane', ...wsArgs(workspace, surface)];
+    if (command) args.push('--command', command);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
