@@ -710,6 +710,24 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// F. TEXT I/O
+// ============================================================================
+
+server.tool(
+  'cmux_send',
+  'Send text to a surface without pressing Enter.',
+  {
+    text: z.string().describe('Text to send'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    surface: z.string().optional().describe('Surface ID/ref'),
+  },
+  safe(async ({ text, workspace, surface }) => {
+    const args = ['send', ...wsArgs(workspace, surface), text];
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
