@@ -490,6 +490,26 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_reorder_workspace',
+  'Reorder a workspace in the sidebar.',
+  {
+    workspace: z.string().describe('Workspace ref to reorder'),
+    index: z.number().optional().describe('Target index position'),
+    before: z.string().optional().describe('Place before this workspace ref'),
+    after: z.string().optional().describe('Place after this workspace ref'),
+    window: z.string().optional().describe('Window ref'),
+  },
+  safeMut(async ({ workspace, index, before, after, window: win }) => {
+    const args = ['reorder-workspace', '--workspace', workspace];
+    if (index !== undefined) args.push('--index', String(index));
+    if (before) args.push('--before', before);
+    if (after) args.push('--after', after);
+    if (win) args.push('--window', win);
+    return ok(cmux(...args));
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
