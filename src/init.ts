@@ -3,10 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type InitOptions = {
   projectRoot?: string;
 };
@@ -17,14 +13,8 @@ export type InitResult = {
   projectRoot?: string;
 };
 
-// ---------------------------------------------------------------------------
-// JSON helpers
-// ---------------------------------------------------------------------------
-
 function readJsonFile<T>(filePath: string): T | undefined {
-  if (!existsSync(filePath)) {
-    return undefined;
-  }
+  if (!existsSync(filePath)) return undefined;
   const raw = readFileSync(filePath, 'utf8').trim();
   return raw ? JSON.parse(raw) as T : undefined;
 }
@@ -42,28 +32,13 @@ function writeJsonIfChanged(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Server entry builders
-// ---------------------------------------------------------------------------
-
 function globalEntry(): Record<string, unknown> {
-  return {
-    command: 'cmux-swarm',
-    args: [],
-  };
+  return { command: 'cmux-swarm', args: [] };
 }
 
 function projectEntry(projectRoot: string): Record<string, unknown> {
-  return {
-    command: 'cmux-swarm',
-    args: [],
-    env: { CMUX_PROJECT_ROOT: projectRoot },
-  };
+  return { command: 'cmux-swarm', args: [], env: { CMUX_PROJECT_ROOT: projectRoot } };
 }
-
-// ---------------------------------------------------------------------------
-// Global config paths (macOS only)
-// ---------------------------------------------------------------------------
 
 function home(): string {
   const sudoUser = process.env['SUDO_USER'];
@@ -73,6 +48,14 @@ function home(): string {
     } catch { /* fall through */ }
   }
   return homedir();
+}
+
+function globalVsCodeMcpPath(): string {
+  return join(home(), 'Library', 'Application Support', 'Code', 'User', 'mcp.json');
+}
+
+function globalOpenCodePath(): string {
+  return join(process.env['XDG_CONFIG_HOME'] ?? join(home(), '.config'), 'opencode', 'opencode.json');
 }
 
 export function initGlobal(): InitResult {
