@@ -127,6 +127,152 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
+function getSessionId(cli: string, cwd: string): string | null {
+  try {
+    switch (cli) {
+      case 'claude': {
+        const sessionsDir = join(homedir(), '.claude', 'sessions');
+        if (!existsSync(sessionsDir)) return null;
+        const files = readdirSync(sessionsDir)
+          .filter(f => f.endsWith('.json'))
+          .map(f => {
+            const full = join(sessionsDir, f);
+            try {
+              const data = JSON.parse(readFileSync(full, 'utf8'));
+              return { mtime: statSync(full).mtimeMs, cwd: data.cwd, sessionId: data.sessionId };
+            } catch { return null; }
+          })
+          .filter((f): f is NonNullable<typeof f> => f !== null)
+          .sort((a, b) => b.mtime - a.mtime);
+
+        const cwdMatch = files.find(f => f.cwd && normalizePath(f.cwd) === normalizePath(cwd));
+        if (cwdMatch) return cwdMatch.sessionId ?? null;
+        if (files.length > 0) return files[0]!.sessionId ?? null;
+        return null;
+      }
+
+      case 'codex': {
+        const codexDir = join(homedir(), '.codex', 'sessions');
+        if (!existsSync(codexDir)) return null;
+        const files: { mtime: number; path: string }[] = [];
+        const walk = (dir: string) => {
+          for (const entry of readdirSync(dir)) {
+            const full = join(dir, entry);
+            const st = statSync(full);
+            if (st.isDirectory()) { walk(full); }
+            else if (entry.startsWith('rollout-') && entry.endsWith('.jsonl')) {
+              files.push({ mtime: st.mtimeMs, path: full });
+            }
+          }
+        };
+        walk(codexDir);
+        files.sort((a, b) => b.mtime - a.mtime);
+
+        for (const file of files) {
+          try {
+            const firstLine = readFileSync(file.path, 'utf8').split('\n')[0];
+            if (!firstLine) continue;
+            const meta = JSON.parse(firstLine);
+            if (meta.type === 'session_meta' && meta.payload?.cwd) {
+              if (normalizePath(meta.payload.cwd) === normalizePath(cwd)) {
+                return meta.payload.id ?? null;
+              }
+            }
+          } catch { continue; }
+        }
+        if (files.length > 0) {
+          try {
+            const firstLine = readFileSync(files[0]!.path, 'utf8').split('\n')[0];
+            if (firstLine) return JSON.parse(firstLine).payload?.id ?? null;
+          } catch { /* ignore */ }
+        }
+        return null;
+      }
+
+      case 'gemini': {
+        const projectsFile = join(homedir(), '.gemini', 'projects.json');
+        const geminiDir = join(homedir(), '.gemini', 'tmp');
+        if (!existsSync(geminiDir)) return null;
+
+        let targetSlug: string | null = null;
+        if (existsSync(projectsFile)) {
+          const raw = JSON.parse(readFileSync(projectsFile, 'utf8'));
+          const mapping: Record<string, string> = raw.projects ?? raw;
+          targetSlug = mapping[cwd] ?? null;
+          if (!targetSlug) {
+            for (const [path, slug] of Object.entries(mapping)) {
+              if (normalizePath(path) === normalizePath(cwd)) { targetSlug = slug; break; }
+            }
+          }
+        }
+
+        const dirsToSearch = targetSlug
+          ? [join(geminiDir, targetSlug)]
+          : readdirSync(geminiDir).map(d => join(geminiDir, d));
+
+        for (const dir of dirsToSearch) {
+          const chatsDir = join(dir, 'chats');
+          if (!existsSync(chatsDir)) continue;
+          const sessions = readdirSync(chatsDir)
+            .filter(f => f.endsWith('.json'))
+            .map(f => ({ mtime: statSync(join(chatsDir, f)).mtimeMs, path: join(chatsDir, f) }))
+            .sort((a, b) => b.mtime - a.mtime);
+          if (sessions.length > 0) {
+            const data = JSON.parse(readFileSync(sessions[0]!.path, 'utf8'));
+            return data.sessionId ?? null;
+          }
+        }
+        return null;
+      }
+
+      case 'opencode': {
+        const dbPaths = [
+          join(homedir(), '.local', 'share', 'opencode', 'opencode.db'),
+          join(homedir(), '.opencode', 'opencode.db'),
+        ];
+        for (const dbPath of dbPaths) {
+          if (!existsSync(dbPath)) continue;
+          try {
+            const escaped = cwd.replace(/'/g, "''");
+            const result = execFileSync('sqlite3', [dbPath,
+              `SELECT id FROM session WHERE directory = '${escaped}' ORDER BY rowid DESC LIMIT 1;`
+            ], { encoding: 'utf8', timeout: 5000 }).trim();
+            if (result) return result;
+          } catch { /* ignore */ }
+        }
+        try {
+          const dbPath = dbPaths[0]!;
+          if (existsSync(dbPath)) {
+            const result = execFileSync('sqlite3', [dbPath,
+              `SELECT id FROM session ORDER BY rowid DESC LIMIT 1;`
+            ], { encoding: 'utf8', timeout: 5000 }).trim();
+            if (result) return result;
+          }
+        } catch { /* ignore */ }
+        return null;
+      }
+
+      case 'goose': {
+        try {
+          const result = execFileSync('goose', ['session', 'list', '--format', 'json', '--limit', '1'], {
+            encoding: 'utf8', timeout: 5000,
+          });
+          const sessions = JSON.parse(result);
+          if (Array.isArray(sessions) && sessions.length > 0) {
+            return sessions[0].session_id ?? sessions[0].id ?? null;
+          }
+        } catch { /* ignore */ }
+        return null;
+      }
+
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
