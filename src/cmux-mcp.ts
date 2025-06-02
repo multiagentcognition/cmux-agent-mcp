@@ -1647,6 +1647,28 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_close_all',
+  'Close ALL workspaces — full shutdown of all panes.',
+  {},
+  safeMut(async () => {
+    let wsList: string;
+    try { wsList = cmux('list-workspaces'); } catch { return ok({ closed: 0 }); }
+
+    const wsRefs = wsList.match(/workspace:\d+/g) ?? [];
+    let closed = 0;
+
+    for (const ref of wsRefs) {
+      try {
+        cmux('close-workspace', '--workspace', ref);
+        closed++;
+      } catch { /* ignore */ }
+    }
+
+    return ok({ closed, total: wsRefs.length });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
