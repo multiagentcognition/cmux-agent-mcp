@@ -1382,6 +1382,57 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// K. ADDITIONAL TOOLS
+// ============================================================================
+
+server.tool(
+  'cmux_launch_grid',
+  'Create a workspace with an exact rows x cols grid of panes, each running an optional command.',
+  {
+    rows: z.number().min(1).max(10).describe('Number of rows'),
+    cols: z.number().min(1).max(10).describe('Number of columns'),
+    command: z.string().optional().describe('Command to run in each pane'),
+    cwd: z.string().optional().describe('Working directory'),
+    workspace_name: z.string().optional().describe('Name for the workspace'),
+  },
+  safeMut(async ({ rows, cols, command, cwd, workspace_name }) => {
+    if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
+
+    const workDir = cwd ?? PROJECT_ROOT ?? homedir();
+    cmux('new-workspace', '--cwd', workDir);
+    if (workspace_name) {
+      try { cmux('rename-workspace', workspace_name); } catch { /* ignore */ }
+    }
+
+    for (let c = 1; c < cols; c++) {
+      try { cmux('new-split', 'right'); } catch { /* ignore */ }
+    }
+    if (rows > 1) {
+      for (let r = 1; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (r * cols + c >= rows * cols) break;
+          try { cmux('new-split', 'down'); } catch { /* ignore */ }
+        }
+      }
+    }
+
+    if (command) {
+      let paneList: string;
+      try { paneList = cmux('list-pane-surfaces'); } catch { paneList = ''; }
+      const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+      for (const ref of surfaceRefs) {
+        try {
+          cmux('send', '--surface', ref, command);
+          cmux('send-key', '--surface', ref, 'enter');
+        } catch { /* ignore */ }
+      }
+    }
+
+    return ok({ grid: `${rows}x${cols}`, total: rows * cols, workspace: workspace_name });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
