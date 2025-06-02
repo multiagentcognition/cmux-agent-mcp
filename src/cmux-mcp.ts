@@ -602,7 +602,7 @@ const server = new McpServer({ name: 'cmux-swarm', version: '0.1.0' });
 
 server.tool(
   'cmux_status',
-  'Check if CMUX is installed and running. Shows project config and full hierarchy.',
+  'Check if CMUX is installed and running. Shows project config and full hierarchy. IMPORTANT: All cmux tools use ref format for IDs (e.g., "surface:8", "workspace:5", "pane:3", "tab:2"). Use cmux_identify or cmux_list_pane_surfaces to discover refs.',
   {},
   safe(async () => {
     const installed = isCmuxInstalled();
