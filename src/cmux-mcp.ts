@@ -1306,6 +1306,35 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_broadcast',
+  'Send the same text + Enter to ALL panes in a workspace.',
+  {
+    text: z.string().describe('Text to broadcast'),
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+  },
+  safe(async ({ text, workspace }) => {
+    const args = ['list-pane-surfaces'];
+    if (workspace) args.push('--workspace', workspace);
+    let paneList: string;
+    try { paneList = cmux(...args); } catch { return ok({ sent_to: 0 }); }
+
+    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    let sent = 0;
+
+    for (const ref of surfaceRefs) {
+      try {
+        const ws = workspace ? ['--workspace', workspace] : [];
+        cmux('send', '--surface', ref, ...ws, text);
+        cmux('send-key', '--surface', ref, ...ws, 'enter');
+        sent++;
+      } catch { /* ignore */ }
+    }
+
+    return ok({ sent_to: sent, total: surfaceRefs.length, text });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
