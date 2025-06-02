@@ -100,6 +100,15 @@ function saveManifest(manifest: SessionManifest): void {
   writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 }
 
+function loadManifest(): SessionManifest | null {
+  try {
+    if (!existsSync(MANIFEST_PATH)) return null;
+    return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
