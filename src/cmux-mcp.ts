@@ -1495,6 +1495,28 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
   }),
 );
 
+server.tool(
+  'cmux_send_submit_some',
+  'Send the same text + Enter to SPECIFIC surfaces (not all).',
+  {
+    surface_refs: z.array(z.string()).describe('List of surface refs to target'),
+    text: z.string().describe('Text to send and submit'),
+    workspace: z.string().optional().describe('Workspace ref'),
+  },
+  safe(async ({ surface_refs, text, workspace }) => {
+    let sent = 0;
+    for (const ref of surface_refs) {
+      try {
+        const ws = workspace ? ['--workspace', workspace] : [];
+        cmux('send', '--surface', ref, ...ws, text);
+        cmux('send-key', '--surface', ref, ...ws, 'enter');
+        sent++;
+      } catch { /* ignore */ }
+    }
+    return ok({ sent_to: sent, total: surface_refs.length, text });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
