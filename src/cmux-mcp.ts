@@ -2311,6 +2311,79 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_open_cli',
+  `Open a single AI coding CLI in a new workspace or a new split.
+Pre-trusts the directory and sets up config.
+Supports: claude, gemini, codex, opencode, goose.`,
+  {
+    cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('Which AI CLI to launch'),
+    cwd: z.string().optional().describe('Working directory'),
+    workspace: z.string().optional().describe('Existing workspace ref to add a split to'),
+    direction: z.enum(['left', 'right', 'up', 'down']).optional().describe('Split direction'),
+    workspace_name: z.string().optional().describe('Name for new workspace'),
+    prompt: z.string().optional().describe('Initial prompt to send after CLI starts'),
+  },
+  safeMut(async ({ cli, cwd, workspace, direction, workspace_name, prompt }) => {
+    if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
+
+    const def = CLI_DEFS[cli];
+    if (!def) return err(`Unknown CLI: ${cli}`);
+
+    const workDir = cwd ?? PROJECT_ROOT ?? homedir();
+
+    ensureCliTrust(cli, workDir);
+    ensureCliConfig(cli);
+
+    const envPrefix = def.skipPermEnv
+      ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
+      : '';
+    const fullCmd = envPrefix + [def.bin, ...def.skipPermFlags].join(' ');
+
+    let surfRef: string;
+
+    if (workspace) {
+      const dir = direction ?? 'right';
+      cmux('new-split', dir, '--workspace', workspace);
+      let surfList: string;
+      try { surfList = cmux('list-pane-surfaces', '--workspace', workspace); } catch { surfList = ''; }
+      const refs = surfList.match(/surface:\d+/g) ?? [];
+      surfRef = refs[refs.length - 1] ?? 'surface:?';
+    } else {
+      cmux('new-workspace', '--cwd', workDir);
+      const name = workspace_name ?? def.label;
+      try { cmux('rename-workspace', name); } catch { /* ignore */ }
+      let surfList: string;
+      try { surfList = cmux('list-pane-surfaces'); } catch { surfList = ''; }
+      const refs = surfList.match(/surface:\d+/g) ?? [];
+      surfRef = refs[refs.length - 1] ?? 'surface:?';
+    }
+
+    cmux('send', '--surface', surfRef, fullCmd);
+    cmux('send-key', '--surface', surfRef, 'enter');
+
+    try {
+      cmux('set-status', 'cli', def.label, '--icon', 'cpu');
+    } catch { /* ignore */ }
+
+    if (prompt) {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        cmux('send', '--surface', surfRef, prompt);
+        cmux('send-key', '--surface', surfRef, 'enter');
+      } catch { /* ignore */ }
+    }
+
+    return ok({
+      cli,
+      surface: surfRef,
+      command: fullCmd,
+      cwd: workDir,
+      ...(prompt ? { prompt_sent: prompt } : {}),
+    });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
