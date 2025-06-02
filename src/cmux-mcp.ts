@@ -274,6 +274,67 @@ function getSessionId(cli: string, cwd: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// CLI Trust Setup — pre-trust directories so CLIs don't prompt
+// ---------------------------------------------------------------------------
+
+function ensureCliTrust(cli: string, cwd: string): void {
+  try {
+    switch (cli) {
+      case 'claude': {
+        const configFile = join(homedir(), '.claude.json');
+        let config: Record<string, any> = {};
+        try { config = JSON.parse(readFileSync(configFile, 'utf8')); } catch { /* ignore */ }
+        if (!config.projects) config.projects = {};
+        const proj = config.projects[cwd] ?? {};
+        if (!proj.hasTrustDialogAccepted) {
+          proj.hasTrustDialogAccepted = true;
+          config.projects[cwd] = proj;
+          writeFileSync(configFile, JSON.stringify(config, null, 2) + '\n', 'utf8');
+        }
+        break;
+      }
+      case 'gemini': {
+        const trustFile = join(homedir(), '.gemini', 'trustedFolders.json');
+        let existing: Record<string, string> = {};
+        try { existing = JSON.parse(readFileSync(trustFile, 'utf8')); } catch { /* ignore */ }
+        if (!existing[cwd]) {
+          existing[cwd] = 'TRUST_FOLDER';
+          mkdirSync(dirname(trustFile), { recursive: true });
+          writeFileSync(trustFile, JSON.stringify(existing, null, 2) + '\n', 'utf8');
+        }
+        break;
+      }
+      case 'codex': {
+        const configFile = join(homedir(), '.codex', 'config.toml');
+        let content = '';
+        try { content = readFileSync(configFile, 'utf8'); } catch { /* ignore */ }
+        const fwdCwd = cwd.replace(/\\/g, '/');
+        if (!content.includes(`[projects.'${fwdCwd}']`)) {
+          mkdirSync(dirname(configFile), { recursive: true });
+          writeFileSync(configFile, content + `\n[projects.'${fwdCwd}']\ntrust_level = "trusted"\n`, 'utf8');
+        }
+        break;
+      }
+    }
+  } catch { /* best effort */ }
+}
+
+function ensureCliConfig(cli: string): void {
+  const def = CLI_DEFS[cli];
+  if (!def?.configSetup) return;
+  const { path: configPath, settings } = def.configSetup;
+  const resolved = configPath.replace('~', homedir());
+  const dir = dirname(resolved);
+  try {
+    mkdirSync(dir, { recursive: true });
+    let existing: Record<string, unknown> = {};
+    try { existing = JSON.parse(readFileSync(resolved, 'utf8')); } catch { /* ignore */ }
+    const updated = { ...existing, ...settings };
+    writeFileSync(resolved, JSON.stringify(updated, null, 2) + '\n', 'utf8');
+  } catch { /* best effort */ }
+}
+
+// ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
 
