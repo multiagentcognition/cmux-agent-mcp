@@ -989,7 +989,11 @@ server.tool(
 
 server.tool(
   'cmux_new_split',
-  'Split an existing pane in a given direction.',
+  'Split an existing pane. Direction meanings:
+- "right" or "left" = side-by-side (horizontal split, vertical divider) — like Cmd+D
+- "down" or "up" = stacked top/bottom (vertical split, horizontal divider) — like Cmd+Shift+D
+When user says "vertical pane/split", they mean stacked top-bottom, so use "down".
+When user says "horizontal pane/split", they mean side-by-side, so use "right".',
   {
     direction: z.enum(['left', 'right', 'up', 'down']).describe('Split direction'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
