@@ -32,6 +32,11 @@ type CliDef = {
   bin: string;
   skipPermFlags: string[];
   skipPermEnv?: Record<string, string>;
+  configSetup?: {
+    path: string;
+    settings: Record<string, unknown>;
+  };
+  trustSetup?: 'claude' | 'gemini' | 'codex';
   label: string;
 };
 
@@ -39,21 +44,25 @@ const CLI_DEFS: Record<string, CliDef> = {
   claude: {
     bin: 'claude',
     skipPermFlags: ['--dangerously-skip-permissions'],
+    trustSetup: 'claude',
     label: 'Claude Code',
   },
   gemini: {
     bin: 'gemini',
     skipPermFlags: ['--no-sandbox'],
+    trustSetup: 'gemini',
     label: 'Gemini CLI',
   },
   codex: {
     bin: 'codex',
     skipPermFlags: ['-a', 'never'],
+    trustSetup: 'codex',
     label: 'Codex CLI',
   },
   opencode: {
     bin: 'opencode',
     skipPermFlags: [],
+    configSetup: { path: '~/.config/opencode/opencode.json', settings: { permission: 'allow' } },
     label: 'OpenCode',
   },
   goose: {
