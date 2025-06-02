@@ -2384,6 +2384,44 @@ Supports: claude, gemini, codex, opencode, goose.`,
   }),
 );
 
+server.tool(
+  'cmux_orchestrate',
+  `Send different prompts/plans to specific surfaces in one call — the core orchestration tool.
+Use this after cmux_launch_agents or cmux_launch_mixed to distribute work to each agent.`,
+  {
+    assignments: z.array(z.object({
+      surface: z.string().describe('Surface ref'),
+      text: z.string().describe('Prompt/plan to send'),
+    })).describe('List of surface + prompt assignments'),
+    workspace: z.string().optional().describe('Workspace ref'),
+    delay_ms: z.number().optional().describe('Delay between sends in ms (default: 500)'),
+  },
+  safe(async ({ assignments, workspace, delay_ms }) => {
+    const delay = delay_ms ?? 500;
+    const results: { surface: string; sent: boolean; error?: string }[] = [];
+
+    for (const assignment of assignments) {
+      try {
+        const ws = workspace ? ['--workspace', workspace] : [];
+        cmux('send', '--surface', assignment.surface, ...ws, assignment.text);
+        cmux('send-key', '--surface', assignment.surface, ...ws, 'enter');
+        results.push({ surface: assignment.surface, sent: true });
+      } catch (e: any) {
+        results.push({ surface: assignment.surface, sent: false, error: e.message });
+      }
+      if (delay > 0) await new Promise(r => setTimeout(r, delay));
+    }
+
+    const sent = results.filter(r => r.sent).length;
+    return ok({
+      total: assignments.length,
+      sent,
+      failed: assignments.length - sent,
+      results,
+    });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
