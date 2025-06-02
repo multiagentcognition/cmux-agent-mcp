@@ -123,6 +123,10 @@ function detectCliFromScreen(screenText: string): string | null {
   return null;
 }
 
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
 // ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
