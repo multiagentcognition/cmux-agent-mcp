@@ -110,6 +110,20 @@ function loadManifest(): SessionManifest | null {
 }
 
 // ---------------------------------------------------------------------------
+// CLI Session ID Detection
+// ---------------------------------------------------------------------------
+
+function detectCliFromScreen(screenText: string): string | null {
+  const lower = screenText.toLowerCase();
+  if (lower.includes('claude') && (lower.includes('code') || lower.includes('anthropic'))) return 'claude';
+  if (lower.includes('gemini')) return 'gemini';
+  if (lower.includes('codex')) return 'codex';
+  if (lower.includes('opencode')) return 'opencode';
+  if (lower.includes('goose')) return 'goose';
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
 
