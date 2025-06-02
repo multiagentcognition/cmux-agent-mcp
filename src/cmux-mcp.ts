@@ -383,6 +383,81 @@ function buildResumeCommand(cli: string, sessionId: string | null, cwd: string):
 }
 
 // ---------------------------------------------------------------------------
+// Capture Manifest — snapshot current state
+// ---------------------------------------------------------------------------
+
+function captureManifest(): SessionManifest {
+  let branch: string | null = null;
+  try {
+    branch = execFileSync('git', ['-C', PROJECT_ROOT ?? '.', 'branch', '--show-current'], {
+      encoding: 'utf8', timeout: 5000,
+    }).trim() || null;
+  } catch { /* ignore */ }
+
+  let treeOutput: string;
+  try { treeOutput = cmux('tree', '--all'); } catch { treeOutput = ''; }
+
+  let workspaceList: string;
+  try { workspaceList = cmux('list-workspaces'); } catch { workspaceList = ''; }
+  const wsRefs = workspaceList.match(/workspace:\d+/g) ?? [];
+
+  const workspaces: WorkspaceManifest[] = [];
+
+  for (const wsRef of wsRefs) {
+    let wsName = wsRef;
+    try {
+      const sidebar = cmux('sidebar-state', '--workspace', wsRef);
+      const cwdMatch = sidebar.match(/cwd[:\s]+([^\n]+)/i);
+      wsName = cwdMatch?.[1]?.trim() ?? wsRef;
+    } catch { /* ignore */ }
+
+    let surfList: string;
+    try { surfList = cmux('list-pane-surfaces', '--workspace', wsRef); } catch { surfList = ''; }
+    const surfRefs = surfList.match(/surface:\d+/g) ?? [];
+
+    const surfaces: SurfaceManifest[] = [];
+
+    for (const surfRef of surfRefs) {
+      let screenText = '';
+      try {
+        screenText = cmux('read-screen', '--surface', surfRef, '--workspace', wsRef, '--lines', '30');
+      } catch { /* ignore */ }
+
+      const cli = detectCliFromScreen(screenText) ?? 'shell';
+
+      let surfCwd = PROJECT_ROOT ?? homedir();
+      try {
+        const sidebarState = cmux('sidebar-state', '--workspace', wsRef);
+        const cwdMatch = sidebarState.match(/cwd[:\s]+([^\n]+)/i);
+        if (cwdMatch) surfCwd = cwdMatch[1]!.trim();
+      } catch { /* ignore */ }
+
+      const sessionId = cli !== 'shell' ? getSessionId(cli, surfCwd) : null;
+
+      surfaces.push({
+        surface_ref: surfRef,
+        cli,
+        session_id: sessionId,
+        cwd: surfCwd,
+      });
+    }
+
+    workspaces.push({
+      workspace_ref: wsRef,
+      name: wsName,
+      surfaces,
+    });
+  }
+
+  return {
+    saved_at: new Date().toISOString(),
+    project_root: PROJECT_ROOT ?? process.cwd(),
+    git_branch: branch,
+    workspaces,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
 
