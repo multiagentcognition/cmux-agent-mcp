@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,6 +38,25 @@ function writeJsonIfChanged(
     writeFileSync(filePath, `${JSON.stringify(nextValue, null, 2)}\n`, 'utf8');
     updatedFiles.push(filePath);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Server entry builders
+// ---------------------------------------------------------------------------
+
+function globalEntry(): Record<string, unknown> {
+  return {
+    command: 'cmux-swarm',
+    args: [],
+  };
+}
+
+function projectEntry(projectRoot: string): Record<string, unknown> {
+  return {
+    command: 'cmux-swarm',
+    args: [],
+    env: { CMUX_PROJECT_ROOT: projectRoot },
+  };
 }
 
 export function initGlobal(): InitResult {
