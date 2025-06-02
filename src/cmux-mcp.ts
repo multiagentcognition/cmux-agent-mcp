@@ -562,8 +562,16 @@ function wsArgs(workspace?: string, surface?: string): string[] {
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleAutoSave(): void {
-  // Will be implemented with session management
-  return;
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    try {
+      if (isCmuxRunning()) {
+        const manifest = captureManifest();
+        saveManifest(manifest);
+      }
+    } catch { /* best effort */ }
+    autoSaveTimer = null;
+  }, 2000); // 2 second debounce
 }
 
 // ---------------------------------------------------------------------------
