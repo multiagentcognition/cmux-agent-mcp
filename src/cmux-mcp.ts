@@ -1574,6 +1574,52 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_read_all_deep',
+  'Deep read of ALL panes. For idle CLI agents, prompts them and returns their summary. For busy agents, reads passively.',
+  {
+    workspace: z.string().optional().describe('Workspace ref'),
+    lines: z.number().optional().describe('Lines for non-queryable panes (default: 20)'),
+    query: z.string().optional().describe('Question to ask idle agents'),
+  },
+  safe(async ({ workspace, lines: lineCount, query }) => {
+    const numLines = lineCount ?? 20;
+    const prompt = query ?? 'Briefly summarize what you have done and your current status.';
+
+    const args = ['list-pane-surfaces'];
+    if (workspace) args.push('--workspace', workspace);
+    let paneList: string;
+    try { paneList = cmux(...args); } catch { return ok({ panes: [] }); }
+
+    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const results: { surface: string; output: string; queried: boolean }[] = [];
+
+    for (const ref of surfaceRefs) {
+      try {
+        const ws = workspace ? ['--workspace', workspace] : [];
+        const screen = cmux('read-screen', '--surface', ref, ...ws, '--lines', '5');
+        const lastLine = screen.trim().split('\n').pop() ?? '';
+        const isIdle = /[>$%\u276F]\s*$/.test(lastLine) || /\?\s*$/.test(lastLine);
+
+        if (isIdle) {
+          cmux('send', '--surface', ref, ...ws, prompt);
+          cmux('send-key', '--surface', ref, ...ws, 'enter');
+          await new Promise(r => setTimeout(r, 5000));
+          const output = cmux('read-screen', '--surface', ref, ...ws, '--lines', String(numLines));
+          results.push({ surface: ref, output, queried: true });
+        } else {
+          const output = cmux('read-screen', '--surface', ref, ...ws, '--lines', String(numLines));
+          results.push({ surface: ref, output, queried: false });
+        }
+      } catch (e: any) {
+        results.push({ surface: ref, output: `(error: ${e.message})`, queried: false });
+      }
+    }
+
+    return ok({ total: results.length, panes: results });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
