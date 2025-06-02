@@ -41,5 +41,12 @@ function writeMcpServersFile(filePath: string, entry: Record<string, unknown>, u
   writeJsonIfChanged(filePath, nextValue, existing, updatedFiles);
 }
 
+function writeVsCodeFile(filePath: string, entry: Record<string, unknown>, updatedFiles: string[]): void {
+  const existing = readJsonFile<Record<string, unknown>>(filePath) ?? {};
+  const existingServers = (existing['servers'] ?? {}) as Record<string, unknown>;
+  const nextValue = { ...existing, servers: { ...existingServers, 'cmux-swarm': { type: 'stdio', ...entry } } };
+  writeJsonIfChanged(filePath, nextValue, existing, updatedFiles);
+}
+
 export function initGlobal(): InitResult { return { mode: 'global', updatedFiles: [] }; }
 export function initProject(_options: InitOptions = {}): InitResult { return { mode: 'project', updatedFiles: [] }; }
