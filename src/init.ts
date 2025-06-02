@@ -48,5 +48,23 @@ function writeVsCodeFile(filePath: string, entry: Record<string, unknown>, updat
   writeJsonIfChanged(filePath, nextValue, existing, updatedFiles);
 }
 
+function writeOpenCodeFile(filePath: string, entry: Record<string, unknown>, updatedFiles: string[]): void {
+  const existing = readJsonFile<Record<string, unknown>>(filePath) ?? {};
+  const existingMcp = (existing['mcp'] ?? {}) as Record<string, unknown>;
+  const nextValue = {
+    ...existing,
+    mcp: {
+      ...existingMcp,
+      'cmux-swarm': {
+        type: 'local',
+        command: [String(entry.command), ...((entry.args ?? []) as string[])],
+        enabled: true,
+        ...(entry.env ? { environment: entry.env as Record<string, string> } : {}),
+      },
+    },
+  };
+  writeJsonIfChanged(filePath, nextValue, existing, updatedFiles);
+}
+
 export function initGlobal(): InitResult { return { mode: 'global', updatedFiles: [] }; }
 export function initProject(_options: InitOptions = {}): InitResult { return { mode: 'project', updatedFiles: [] }; }
