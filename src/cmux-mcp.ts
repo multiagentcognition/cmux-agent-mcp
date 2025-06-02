@@ -2240,6 +2240,77 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_session_reconcile',
+  'Compare saved session manifest against what is actually running in CMUX.',
+  {},
+  safe(async () => {
+    if (!isCmuxRunning()) {
+      return ok({ error: 'CMUX is not running.' });
+    }
+
+    const manifest = loadManifest();
+    const live = captureManifest();
+    const liveSurfaces = live.workspaces.flatMap(w =>
+      w.surfaces.map(s => ({ workspace: w.name, ...s }))
+    );
+
+    if (!manifest) {
+      return ok({
+        has_manifest: false,
+        live_surfaces: liveSurfaces.length,
+        note: 'No saved manifest. Call cmux_session_save to create one.',
+        live: liveSurfaces,
+      });
+    }
+
+    const manifestSurfaces = manifest.workspaces.flatMap(w =>
+      w.surfaces.map(s => ({ workspace: w.name, ...s }))
+    );
+
+    const manifestClis = manifestSurfaces.map(s => `${s.workspace}/${s.cli}`);
+    const liveClis = liveSurfaces.map(s => `${s.workspace}/${s.cli}`);
+
+    const disappeared = manifestSurfaces.filter(ms =>
+      !liveClis.includes(`${ms.workspace}/${ms.cli}`)
+    );
+    const appeared = liveSurfaces.filter(ls =>
+      !manifestClis.includes(`${ls.workspace}/${ls.cli}`)
+    );
+
+    const sessionChanges: { workspace: string; cli: string; old_session: string | null; new_session: string | null }[] = [];
+    for (const ms of manifestSurfaces) {
+      const matching = liveSurfaces.find(ls =>
+        ls.workspace === ms.workspace && ls.cli === ms.cli
+      );
+      if (matching && ms.session_id && matching.session_id && ms.session_id !== matching.session_id) {
+        sessionChanges.push({
+          workspace: ms.workspace,
+          cli: ms.cli,
+          old_session: ms.session_id,
+          new_session: matching.session_id,
+        });
+      }
+    }
+
+    const inSync = disappeared.length === 0 && appeared.length === 0 && sessionChanges.length === 0;
+
+    return ok({
+      has_manifest: true,
+      manifest_saved_at: manifest.saved_at,
+      in_sync: inSync,
+      manifest_surfaces: manifestSurfaces.length,
+      live_surfaces: liveSurfaces.length,
+      disappeared: disappeared.length > 0 ? disappeared : undefined,
+      appeared: appeared.length > 0 ? appeared : undefined,
+      session_changes: sessionChanges.length > 0 ? sessionChanges : undefined,
+      note: inSync
+        ? 'Everything matches. Manifest and live state are in sync.'
+        : `Drift detected: ${disappeared.length} disappeared, ${appeared.length} new, ${sessionChanges.length} session changes.`,
+    });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
