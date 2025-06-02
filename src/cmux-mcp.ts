@@ -839,7 +839,7 @@ server.tool(
 
 server.tool(
   'cmux_rename_tab',
-  'Rename a tab.',
+  'Rename a tab — this changes the name shown in the TAB BAR (top), NOT the sidebar. The sidebar shows workspace names (use cmux_rename_workspace for that). To rename the window title bar, use cmux_rename_window. IDs must use ref format like "tab:8", not bare numbers.',
   {
     title: z.string().describe('New tab title'),
     workspace: z.string().optional().describe('Workspace ref'),
