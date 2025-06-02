@@ -730,7 +730,7 @@ server.tool(
 
 server.tool(
   'cmux_rename_workspace',
-  'Rename a workspace.',
+  'Rename a workspace — this changes the name shown in the SIDEBAR. The sidebar displays workspace names, not tab names. Use this to rename what appears in the left sidebar.',
   {
     title: z.string().describe('New workspace title'),
     workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
