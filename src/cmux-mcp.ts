@@ -1171,6 +1171,108 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// J. COMPOSITE / HIGH-LEVEL TOOLS
+// ============================================================================
+
+server.tool(
+  'cmux_launch_agents',
+  `Create a workspace and launch N AI coding agents in a grid layout.
+Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
+  {
+    cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('Which AI CLI to launch'),
+    count: z.number().min(1).max(12).describe('Number of agent panes'),
+    cwd: z.string().optional().describe('Working directory (default: project root)'),
+    workspace_name: z.string().optional().describe('Name for the new workspace'),
+    prompt: z.string().optional().describe('Initial prompt to send to each agent after launch'),
+  },
+  safeMut(async ({ cli, count, cwd, workspace_name, prompt }) => {
+    if (!isCmuxRunning()) {
+      return err('CMUX is not running. Open cmux.app first.');
+    }
+
+    const def = CLI_DEFS[cli];
+    if (!def) return err(`Unknown CLI: ${cli}`);
+
+    const workDir = cwd ?? PROJECT_ROOT ?? homedir();
+
+    // 1. Create workspace
+    const wsResult = cmux('new-workspace', '--cwd', workDir);
+
+    // 2. Rename workspace
+    const name = workspace_name ?? `${def.label} x${count}`;
+    try { cmux('rename-workspace', name); } catch { /* ignore */ }
+
+    // 3. Build grid by splitting
+    const cols = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+
+    for (let c = 1; c < cols; c++) {
+      try { cmux('new-split', 'right'); } catch { /* ignore */ }
+    }
+
+    if (rows > 1) {
+      let paneList: string;
+      try { paneList = cmux('list-panes'); } catch { paneList = ''; }
+
+      for (let r = 1; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (r * cols + c >= count) break;
+          try { cmux('new-split', 'down'); } catch { /* ignore */ }
+        }
+      }
+    }
+
+    // 4. Get final pane list and launch CLI in each
+    let finalPanes: string;
+    try { finalPanes = cmux('list-pane-surfaces'); } catch { finalPanes = ''; }
+
+    const cliCmd = [def.bin, ...def.skipPermFlags].join(' ');
+    const envPrefix = def.skipPermEnv
+      ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
+      : '';
+    const fullCmd = envPrefix + cliCmd;
+
+    const surfaceRefs = finalPanes.match(/surface:\d+/g) ?? [];
+    const launched: string[] = [];
+
+    for (let i = 0; i < Math.min(surfaceRefs.length, count); i++) {
+      const ref = surfaceRefs[i];
+      try {
+        cmux('send', '--surface', ref, fullCmd);
+        cmux('send-key', '--surface', ref, 'enter');
+        launched.push(ref);
+      } catch { /* ignore individual failures */ }
+    }
+
+    // 5. Optionally send initial prompt after a brief delay
+    if (prompt && launched.length > 0) {
+      await new Promise(r => setTimeout(r, 3000));
+      for (const ref of launched) {
+        try {
+          cmux('send', '--surface', ref, prompt);
+          cmux('send-key', '--surface', ref, 'enter');
+        } catch { /* ignore */ }
+      }
+    }
+
+    // 6. Set sidebar status
+    try {
+      cmux('set-status', 'agents', `${launched.length} ${def.label}`, '--icon', 'cpu');
+    } catch { /* ignore */ }
+
+    return ok({
+      workspace: name,
+      cli: cli,
+      grid: `${cols}x${rows}`,
+      launched: launched.length,
+      surfaces: launched,
+      command: fullCmd,
+      ...(prompt ? { prompt_sent: prompt } : {}),
+    });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
