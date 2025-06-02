@@ -1224,7 +1224,7 @@ server.tool(
 
 server.tool(
   'cmux_set_status',
-  'Set a sidebar metadata status pill (key-value badge) for a workspace.',
+  'Set a sidebar metadata status pill (key-value badge) for a workspace. This does NOT rename the workspace — use cmux_rename_workspace to change the sidebar name.',
   {
     key: z.string().describe('Status key (unique identifier)'),
     value: z.string().describe('Status value to display'),
