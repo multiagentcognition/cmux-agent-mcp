@@ -788,7 +788,7 @@ server.tool(
 
 server.tool(
   'cmux_rename_window',
-  'Rename a window.',
+  'Rename a window — this changes the TITLE BAR text at the very top of the window.',
   {
     title: z.string().describe('New window title'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
