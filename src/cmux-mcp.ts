@@ -1335,6 +1335,53 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_workspace_snapshot',
+  'Full workspace snapshot: tree + all pane output + sidebar state.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    lines: z.number().optional().describe('Lines per pane (default: 20)'),
+  },
+  safe(async ({ workspace, lines: lineCount }) => {
+    const numLines = lineCount ?? 20;
+
+    let tree: string | undefined;
+    try {
+      const args = ['tree'];
+      if (workspace) args.push('--workspace', workspace);
+      tree = cmux(...args);
+    } catch { /* ignore */ }
+
+    let sidebar: string | undefined;
+    try {
+      const args = ['sidebar-state'];
+      if (workspace) args.push('--workspace', workspace);
+      sidebar = cmux(...args);
+    } catch { /* ignore */ }
+
+    const paneArgs = ['list-pane-surfaces'];
+    if (workspace) paneArgs.push('--workspace', workspace);
+    let paneList: string;
+    try { paneList = cmux(...paneArgs); } catch { paneList = ''; }
+
+    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const panes: { surface: string; output: string }[] = [];
+
+    for (const ref of surfaceRefs) {
+      try {
+        const readArgs = ['read-screen', '--surface', ref, '--lines', String(numLines)];
+        if (workspace) readArgs.push('--workspace', workspace);
+        const output = cmux(...readArgs);
+        panes.push({ surface: ref, output });
+      } catch (e: any) {
+        panes.push({ surface: ref, output: `(error: ${e.message})` });
+      }
+    }
+
+    return ok({ tree, sidebar, total_panes: panes.length, panes });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
