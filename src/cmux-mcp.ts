@@ -65,6 +65,33 @@ const CLI_DEFS: Record<string, CliDef> = {
 };
 
 // ---------------------------------------------------------------------------
+// Session Manifest — tracks what's running for crash recovery
+// ---------------------------------------------------------------------------
+
+type SurfaceManifest = {
+  surface_ref: string;
+  cli: string;
+  session_id: string | null;
+  cwd: string;
+};
+
+type WorkspaceManifest = {
+  workspace_ref: string;
+  name: string;
+  surfaces: SurfaceManifest[];
+};
+
+type SessionManifest = {
+  saved_at: string;
+  project_root: string;
+  git_branch: string | null;
+  workspaces: WorkspaceManifest[];
+};
+
+const MANIFEST_DIR = PROJECT_ROOT ? join(PROJECT_ROOT, '.cmux-swarm') : join(homedir(), '.cmux-swarm');
+const MANIFEST_PATH = join(MANIFEST_DIR, 'session.json');
+
+// ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
 
