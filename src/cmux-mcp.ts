@@ -2125,6 +2125,121 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_session_recover',
+  'Recover a crashed CMUX session from the saved manifest.',
+  {
+    manifest_path: z.string().optional().describe('Path to manifest file'),
+  },
+  safeMut(async ({ manifest_path }) => {
+    const path = manifest_path ?? MANIFEST_PATH;
+    let manifest: SessionManifest | null;
+    try {
+      manifest = JSON.parse(readFileSync(path, 'utf8')) as SessionManifest;
+    } catch {
+      manifest = null;
+    }
+
+    if (!manifest) {
+      return ok({
+        error: 'No session manifest found.',
+        path,
+        note: 'Use cmux_session_save to create one while agents are running.',
+      });
+    }
+
+    if (!isCmuxRunning()) {
+      try {
+        execSync('open -a cmux', { timeout: 10_000 });
+        for (let i = 0; i < 15; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          if (isCmuxRunning()) break;
+        }
+      } catch { /* ignore */ }
+
+      if (!isCmuxRunning()) {
+        return ok({ error: 'CMUX could not be started.' });
+      }
+    }
+
+    type RecoveredSurface = { cli: string; session_id: string | null; surface_ref: string; resumed: boolean };
+    type RecoveredWorkspace = { name: string; surfaces: RecoveredSurface[] };
+    const recoveredWorkspaces: RecoveredWorkspace[] = [];
+
+    for (const mw of manifest.workspaces) {
+      if (mw.surfaces.length === 0) continue;
+
+      const recoveredSurfaces: RecoveredSurface[] = [];
+      const firstSurface = mw.surfaces[0]!;
+      const firstCwd = firstSurface.cwd || manifest.project_root;
+      const firstCmd = buildResumeCommand(firstSurface.cli, firstSurface.session_id, firstCwd);
+      cmux('new-workspace', '--cwd', firstCwd, '--command', firstCmd);
+
+      try { cmux('rename-workspace', mw.name); } catch { /* ignore */ }
+
+      let surfList: string;
+      try { surfList = cmux('list-pane-surfaces'); } catch { surfList = ''; }
+      const firstRefs = surfList.match(/surface:\d+/g) ?? [];
+      const firstRef = firstRefs[firstRefs.length - 1] ?? 'surface:?';
+
+      recoveredSurfaces.push({
+        cli: firstSurface.cli,
+        session_id: firstSurface.session_id,
+        surface_ref: firstRef,
+        resumed: firstSurface.session_id !== null,
+      });
+
+      for (let i = 1; i < mw.surfaces.length; i++) {
+        const surf = mw.surfaces[i]!;
+        const surfCwd = surf.cwd || manifest.project_root;
+        const cmd = buildResumeCommand(surf.cli, surf.session_id, surfCwd);
+
+        const dir = i % 2 === 1 ? 'right' : 'down';
+        try {
+          cmux('new-split', dir);
+          await new Promise(r => setTimeout(r, 500));
+
+          let newSurfList: string;
+          try { newSurfList = cmux('list-pane-surfaces'); } catch { newSurfList = ''; }
+          const newRefs = newSurfList.match(/surface:\d+/g) ?? [];
+          const newRef = newRefs[newRefs.length - 1] ?? `surface:?`;
+
+          cmux('send', '--surface', newRef, cmd);
+          cmux('send-key', '--surface', newRef, 'enter');
+
+          recoveredSurfaces.push({
+            cli: surf.cli,
+            session_id: surf.session_id,
+            surface_ref: newRef,
+            resumed: surf.session_id !== null,
+          });
+        } catch { /* ignore */ }
+      }
+
+      recoveredWorkspaces.push({ name: mw.name, surfaces: recoveredSurfaces });
+    }
+
+    try {
+      const newManifest = captureManifest();
+      saveManifest(newManifest);
+    } catch { /* best effort */ }
+
+    const allSurfaces = recoveredWorkspaces.flatMap(w => w.surfaces);
+    const totalSurfaces = allSurfaces.length;
+    const withSession = allSurfaces.filter(s => s.resumed).length;
+
+    return ok({
+      recovered: true,
+      from_manifest: manifest.saved_at,
+      workspaces: recoveredWorkspaces.length,
+      surfaces: totalSurfaces,
+      resumed_with_session: withSession,
+      resumed_fresh: totalSurfaces - withSession,
+      details: recoveredWorkspaces,
+    });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
