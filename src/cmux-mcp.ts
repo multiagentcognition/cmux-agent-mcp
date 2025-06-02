@@ -1433,6 +1433,68 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_launch_mixed',
+  `Launch agents with DIFFERENT CLIs in one workspace.
+Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
+  {
+    agents: z.array(z.object({
+      cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('CLI to use'),
+      label: z.string().optional().describe('Optional label'),
+    })).describe('List of agents to launch'),
+    cwd: z.string().optional().describe('Working directory'),
+    workspace_name: z.string().optional().describe('Name for the workspace'),
+  },
+  safeMut(async ({ agents, cwd, workspace_name }) => {
+    if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
+
+    const workDir = cwd ?? PROJECT_ROOT ?? homedir();
+    const count = agents.length;
+
+    cmux('new-workspace', '--cwd', workDir);
+    const name = workspace_name ?? `Mixed x${count}`;
+    try { cmux('rename-workspace', name); } catch { /* ignore */ }
+
+    const cols = Math.ceil(Math.sqrt(count));
+    for (let c = 1; c < cols; c++) {
+      try { cmux('new-split', 'right'); } catch { /* ignore */ }
+    }
+    const rows = Math.ceil(count / cols);
+    if (rows > 1) {
+      for (let r = 1; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (r * cols + c >= count) break;
+          try { cmux('new-split', 'down'); } catch { /* ignore */ }
+        }
+      }
+    }
+
+    let paneList: string;
+    try { paneList = cmux('list-pane-surfaces'); } catch { paneList = ''; }
+    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const launched: { surface: string; cli: string; label?: string }[] = [];
+
+    for (let i = 0; i < Math.min(surfaceRefs.length, count); i++) {
+      const agent = agents[i];
+      const def = CLI_DEFS[agent.cli];
+      if (!def) continue;
+
+      const envPrefix = def.skipPermEnv
+        ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
+        : '';
+      const fullCmd = envPrefix + [def.bin, ...def.skipPermFlags].join(' ');
+
+      try {
+        cmux('send', '--surface', surfaceRefs[i], fullCmd);
+        cmux('send-key', '--surface', surfaceRefs[i], 'enter');
+        launched.push({ surface: surfaceRefs[i], cli: agent.cli, label: agent.label });
+      } catch { /* ignore */ }
+    }
+
+    return ok({ workspace: name, launched });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
