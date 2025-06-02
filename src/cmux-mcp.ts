@@ -1545,6 +1545,35 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_send_each',
+  'Send DIFFERENT text to each pane in a workspace. Texts array maps to panes in surface order.',
+  {
+    texts: z.array(z.string()).describe('Array of texts, one per pane'),
+    workspace: z.string().optional().describe('Workspace ref'),
+  },
+  safe(async ({ texts, workspace }) => {
+    const args = ['list-pane-surfaces'];
+    if (workspace) args.push('--workspace', workspace);
+    let paneList: string;
+    try { paneList = cmux(...args); } catch { return ok({ sent_to: 0 }); }
+
+    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    let sent = 0;
+
+    for (let i = 0; i < Math.min(surfaceRefs.length, texts.length); i++) {
+      try {
+        const ws = workspace ? ['--workspace', workspace] : [];
+        cmux('send', '--surface', surfaceRefs[i], ...ws, texts[i]);
+        cmux('send-key', '--surface', surfaceRefs[i], ...ws, 'enter');
+        sent++;
+      } catch { /* ignore */ }
+    }
+
+    return ok({ sent_to: sent, total: surfaceRefs.length });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
