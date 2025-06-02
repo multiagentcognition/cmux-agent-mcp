@@ -335,6 +335,54 @@ function ensureCliConfig(cli: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Resume Command Building
+// ---------------------------------------------------------------------------
+
+function buildResumeCommand(cli: string, sessionId: string | null, cwd: string): string {
+  const def = CLI_DEFS[cli];
+  if (!def) return 'bash';
+
+  ensureCliTrust(cli, cwd);
+
+  const base = [def.bin, ...def.skipPermFlags].join(' ');
+  const envPrefix = def.skipPermEnv
+    ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
+    : '';
+
+  if (!sessionId) {
+    switch (cli) {
+      case 'claude':
+        return `(${envPrefix}${base} --continue) || (${envPrefix}${base})`;
+      case 'gemini':
+        return `(${envPrefix}${base} --resume latest) || (${envPrefix}${base})`;
+      case 'codex':
+        return `(codex resume --last) || (${envPrefix}${base})`;
+      case 'opencode':
+        return `(${envPrefix}${base} --continue) || (${envPrefix}${base})`;
+      case 'goose':
+        return `(${envPrefix}goose session --resume) || (${envPrefix}${base})`;
+      default:
+        return `${envPrefix}${base}`;
+    }
+  }
+
+  switch (cli) {
+    case 'claude':
+      return `${envPrefix}${base} --resume ${sessionId}`;
+    case 'gemini':
+      return `${envPrefix}${base} --resume latest`;
+    case 'codex':
+      return `codex resume ${sessionId}`;
+    case 'opencode':
+      return `${envPrefix}${base} --session ${sessionId}`;
+    case 'goose':
+      return `${envPrefix}goose session --resume --session-id ${sessionId}`;
+    default:
+      return `${envPrefix}${base}`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
 
