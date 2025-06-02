@@ -1669,6 +1669,27 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_screenshot',
+  'Take a screenshot of the CMUX window using macOS screencapture.',
+  {
+    output_path: z.string().optional().describe('Output file path'),
+  },
+  safe(async ({ output_path }) => {
+    const ts = Date.now();
+    const outPath = output_path ?? `/tmp/cmux-screenshot-${ts}.png`;
+    try {
+      execSync(`screencapture -l $(osascript -e 'tell app "cmux" to id of window 1') "${outPath}"`, {
+        timeout: 10_000,
+        encoding: 'utf8',
+      });
+    } catch {
+      execSync(`screencapture -w "${outPath}"`, { timeout: 10_000 });
+    }
+    return ok({ screenshot: outPath });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
