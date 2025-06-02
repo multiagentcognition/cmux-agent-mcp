@@ -91,6 +91,15 @@ type SessionManifest = {
 const MANIFEST_DIR = PROJECT_ROOT ? join(PROJECT_ROOT, '.cmux-swarm') : join(homedir(), '.cmux-swarm');
 const MANIFEST_PATH = join(MANIFEST_DIR, 'session.json');
 
+function saveManifest(manifest: SessionManifest): void {
+  mkdirSync(MANIFEST_DIR, { recursive: true });
+  if (existsSync(MANIFEST_PATH)) {
+    const backupPath = join(MANIFEST_DIR, 'session.backup.json');
+    try { renameSync(MANIFEST_PATH, backupPath); } catch { /* ignore */ }
+  }
+  writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+}
+
 // ---------------------------------------------------------------------------
 // CMUX CLI Helpers
 // ---------------------------------------------------------------------------
