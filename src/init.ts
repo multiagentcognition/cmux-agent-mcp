@@ -1,4 +1,6 @@
+import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +59,20 @@ function projectEntry(projectRoot: string): Record<string, unknown> {
     args: [],
     env: { CMUX_PROJECT_ROOT: projectRoot },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Global config paths (macOS only)
+// ---------------------------------------------------------------------------
+
+function home(): string {
+  const sudoUser = process.env['SUDO_USER'];
+  if (sudoUser && process.getuid?.() === 0) {
+    try {
+      return execSync(`eval echo ~${sudoUser}`, { encoding: 'utf8', timeout: 3000 }).trim();
+    } catch { /* fall through */ }
+  }
+  return homedir();
 }
 
 export function initGlobal(): InitResult {
