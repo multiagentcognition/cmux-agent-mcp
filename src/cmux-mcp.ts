@@ -2091,6 +2091,40 @@ server.tool(
   }),
 );
 
+// ============================================================================
+// L. SESSION MANAGEMENT — save, recover, reconcile
+// ============================================================================
+
+server.tool(
+  'cmux_session_save',
+  'Save current CMUX state to a manifest for crash recovery.',
+  {},
+  safe(async () => {
+    if (!isCmuxRunning()) {
+      return ok({ error: 'CMUX is not running. Nothing to save.' });
+    }
+
+    const manifest = captureManifest();
+    saveManifest(manifest);
+
+    const totalSurfaces = manifest.workspaces.reduce((sum, w) => sum + w.surfaces.length, 0);
+    const withSession = manifest.workspaces.reduce(
+      (sum, w) => sum + w.surfaces.filter(s => s.session_id !== null).length, 0);
+
+    return ok({
+      saved: true,
+      path: MANIFEST_PATH,
+      workspaces: manifest.workspaces.length,
+      surfaces: totalSurfaces,
+      sessions_captured: withSession,
+      sessions_missing: totalSurfaces - withSession,
+      note: withSession < totalSurfaces
+        ? `${totalSurfaces - withSession} surface(s) have no session ID yet.`
+        : 'All session IDs captured. Full recovery is possible.',
+    });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
