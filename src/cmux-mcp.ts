@@ -1620,6 +1620,33 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_start',
+  'Launch CMUX if not already running. Opens the cmux.app.',
+  {
+    cwd: z.string().optional().describe('Working directory'),
+  },
+  safe(async ({ cwd }) => {
+    if (isCmuxRunning()) {
+      return ok({ already_running: true });
+    }
+
+    const workDir = cwd ?? PROJECT_ROOT ?? homedir();
+    try {
+      execSync(`open -a cmux "${workDir}"`, { timeout: 10_000 });
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (isCmuxRunning()) {
+          return ok({ started: true, cwd: workDir });
+        }
+      }
+      return ok({ started: false, note: 'CMUX opened but socket not ready yet.' });
+    } catch (e: any) {
+      return err(`Failed to start CMUX: ${e.message}`);
+    }
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
