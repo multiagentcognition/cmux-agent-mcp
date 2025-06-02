@@ -1273,6 +1273,39 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
   }),
 );
 
+server.tool(
+  'cmux_read_all',
+  'Read output from all panes/surfaces in the current (or specified) workspace.',
+  {
+    workspace: z.string().optional().describe('Workspace ID/ref'),
+    lines: z.number().optional().describe('Lines per pane (default: 20)'),
+  },
+  safe(async ({ workspace, lines: lineCount }) => {
+    const numLines = lineCount ?? 20;
+
+    const args = ['list-pane-surfaces'];
+    if (workspace) args.push('--workspace', workspace);
+    let paneList: string;
+    try { paneList = cmux(...args); } catch { return ok({ panes: [] }); }
+
+    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const results: { surface: string; output: string }[] = [];
+
+    for (const ref of surfaceRefs) {
+      try {
+        const readArgs = ['read-screen', '--surface', ref, '--lines', String(numLines)];
+        if (workspace) readArgs.push('--workspace', workspace);
+        const output = cmux(...readArgs);
+        results.push({ surface: ref, output });
+      } catch (e: any) {
+        results.push({ surface: ref, output: `(error: ${e.message})` });
+      }
+    }
+
+    return ok({ total: results.length, panes: results });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
