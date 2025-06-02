@@ -1517,6 +1517,34 @@ server.tool(
   }),
 );
 
+server.tool(
+  'cmux_send_key_all',
+  'Send a key (e.g., ctrl+c, escape) to ALL panes in a workspace.',
+  {
+    key: z.string().describe('Key to send'),
+    workspace: z.string().optional().describe('Workspace ref'),
+  },
+  safe(async ({ key, workspace }) => {
+    const args = ['list-pane-surfaces'];
+    if (workspace) args.push('--workspace', workspace);
+    let paneList: string;
+    try { paneList = cmux(...args); } catch { return ok({ sent_to: 0 }); }
+
+    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    let sent = 0;
+
+    for (const ref of surfaceRefs) {
+      try {
+        const ws = workspace ? ['--workspace', workspace] : [];
+        cmux('send-key', '--surface', ref, ...ws, key);
+        sent++;
+      } catch { /* ignore */ }
+    }
+
+    return ok({ sent_to: sent, total: surfaceRefs.length, key });
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
