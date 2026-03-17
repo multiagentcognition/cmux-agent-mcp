@@ -2403,6 +2403,67 @@ Example: launch 4 Claude agents, then orchestrate by sending each agent its spec
 );
 
 // ============================================================================
+// K2. BATCH EXECUTION
+// ============================================================================
+
+server.tool(
+  'cmux_batch',
+  `Execute multiple CMUX operations in a single MCP call. Each step references an existing cmux tool by name and provides its parameters. Steps run sequentially. Later steps can reference outputs from earlier steps using $steps[N].path.to.field syntax in string parameter values.
+
+Example: Launch agents, set progress, and orchestrate — all in one call instead of 8+ separate tool calls.
+
+Variable substitution: In any string param value, use $steps[0].surfaces[2] to reference the 3rd surface from step 0's output. If the entire value is a single $steps ref, the raw value is returned (preserving arrays/numbers). Embedded refs in larger strings are interpolated as strings.
+
+Error handling: By default, stops on first error. Set continue_on_error: true to skip failures and continue.`,
+  {
+    steps: z.array(z.object({
+      tool: z.string().describe('Tool name (e.g., "cmux_launch_agents", "cmux_set_status")'),
+      params: z.record(z.string(), z.unknown()).describe('Parameters for the tool. String values may contain $steps[N].path refs.'),
+      label: z.string().optional().describe('Optional human-readable label for this step'),
+    })).min(1).max(30).describe('Ordered list of operations to execute'),
+    continue_on_error: z.boolean().optional().describe('If true, continue executing steps after a failure (default: false)'),
+  },
+  safeMut(async ({ steps, continue_on_error }: { steps: { tool: string; params: Record<string, unknown>; label?: string }[]; continue_on_error?: boolean }) => {
+    if (!isCmuxRunning()) return err('CMUX is not running.');
+
+    const outputs: unknown[] = [];
+    const results: { step: number; label?: string; tool: string; ok: boolean; output?: unknown; error?: string }[] = [];
+
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const entry = toolRegistry.get(step.tool);
+      if (!entry) {
+        const msg = `Unknown or non-batchable tool: ${step.tool}. Batchable tools: ${[...toolRegistry.keys()].join(', ')}`;
+        results.push({ step: i, label: step.label, tool: step.tool, ok: false, error: msg });
+        outputs.push(undefined);
+        if (!continue_on_error) return ok({ completed: i, total: steps.length, results, stopped_at: i, error: msg });
+        continue;
+      }
+
+      const resolvedParams = resolveAllVars(step.params, outputs) as Record<string, unknown>;
+
+      try {
+        const rawResult = await entry.handler(resolvedParams);
+        const output = unwrapOk(rawResult);
+        outputs.push(output);
+        results.push({ step: i, label: step.label, tool: step.tool, ok: true, output });
+      } catch (e: any) {
+        const msg = e.message ?? String(e);
+        results.push({ step: i, label: step.label, tool: step.tool, ok: false, error: msg });
+        outputs.push(undefined);
+        if (!continue_on_error) return ok({ completed: i, total: steps.length, results, stopped_at: i, error: msg });
+      }
+    }
+
+    return ok({
+      completed: results.filter(r => r.ok).length,
+      total: steps.length,
+      results,
+    });
+  }),
+);
+
+// ============================================================================
 // L. SESSION MANAGEMENT — save, recover, reconcile
 // ============================================================================
 
