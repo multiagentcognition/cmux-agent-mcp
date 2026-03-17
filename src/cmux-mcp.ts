@@ -97,7 +97,7 @@ type SessionManifest = {
   workspaces: WorkspaceManifest[];
 };
 
-const MANIFEST_DIR = PROJECT_ROOT ? join(PROJECT_ROOT, '.cmux-mcp') : join(homedir(), '.cmux-mcp');
+const MANIFEST_DIR = PROJECT_ROOT ? join(PROJECT_ROOT, '.cmux-agent-mcp') : join(homedir(), '.cmux-agent-mcp');
 const MANIFEST_PATH = join(MANIFEST_DIR, 'session.json');
 
 function saveManifest(manifest: SessionManifest): void {
@@ -641,7 +641,7 @@ function wsArgs(workspace?: string, surface?: string): string[] {
 // MCP Server
 // ---------------------------------------------------------------------------
 
-const server = new McpServer({ name: 'cmux-mcp', version: '0.1.0' });
+const server = new McpServer({ name: 'cmux-agent-mcp', version: '0.1.0' });
 
 // ---------------------------------------------------------------------------
 // ID Format Note:

@@ -48,14 +48,14 @@ function writeJsonIfChanged(
 
 function globalEntry(): Record<string, unknown> {
   return {
-    command: 'cmux-mcp',
+    command: 'cmux-agent-mcp',
     args: [],
   };
 }
 
 function projectEntry(projectRoot: string): Record<string, unknown> {
   return {
-    command: 'cmux-mcp',
+    command: 'cmux-agent-mcp',
     args: [],
     env: { CMUX_PROJECT_ROOT: projectRoot },
   };
@@ -92,7 +92,7 @@ function writeMcpServersFile(filePath: string, entry: Record<string, unknown>, u
   const existingServers = (existing['mcpServers'] ?? {}) as Record<string, unknown>;
   const nextValue = {
     ...existing,
-    mcpServers: { ...existingServers, 'cmux-mcp': entry },
+    mcpServers: { ...existingServers, 'cmux-agent-mcp': entry },
   };
   writeJsonIfChanged(filePath, nextValue, existing, updatedFiles);
 }
@@ -104,7 +104,7 @@ function writeVsCodeFile(filePath: string, entry: Record<string, unknown>, updat
     ...existing,
     servers: {
       ...existingServers,
-      'cmux-mcp': { type: 'stdio', ...entry },
+      'cmux-agent-mcp': { type: 'stdio', ...entry },
     },
   };
   writeJsonIfChanged(filePath, nextValue, existing, updatedFiles);
@@ -117,7 +117,7 @@ function writeOpenCodeFile(filePath: string, entry: Record<string, unknown>, upd
     ...existing,
     mcp: {
       ...existingMcp,
-      'cmux-mcp': {
+      'cmux-agent-mcp': {
         type: 'local',
         command: [String(entry.command), ...((entry.args ?? []) as string[])],
         enabled: true,

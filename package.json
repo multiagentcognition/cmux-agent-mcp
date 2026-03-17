@@ -1,5 +1,5 @@
 {
-  "name": "cmux-mcp",
+  "name": "cmux-agent-mcp",
   "version": "0.1.0",
   "type": "module",
   "description": "CMUX MCP Server — programmable terminal control plane for multi-agent AI workflows",
@@ -19,7 +19,7 @@
   ],
   "main": "./build/cli.js",
   "bin": {
-    "cmux-mcp": "build/cli.js"
+    "cmux-agent-mcp": "build/cli.js"
   },
   "files": [
     "build/",
