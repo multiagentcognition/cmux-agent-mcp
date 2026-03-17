@@ -555,6 +555,21 @@ function isCmuxRunning(): boolean {
   }
 }
 
+/** Extract workspace ref (e.g. "workspace:6") from cmux new-workspace output like "OK workspace:6" */
+function parseWorkspaceRef(output: string): string | null {
+  const m = output.match(/workspace:\d+/);
+  return m ? m[0] : null;
+}
+
+/** Get all surface refs across ALL panes in a workspace using list-panels (not list-pane-surfaces which only returns focused pane). */
+function allSurfaceRefs(workspace?: string): string[] {
+  const args = ['list-panels'];
+  if (workspace) args.push('--workspace', workspace);
+  let panelList: string;
+  try { panelList = cmux(...args); } catch { return []; }
+  return panelList.match(/surface:\d+/g) ?? [];
+}
+
 function isCmuxInstalled(): boolean {
   const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
   if (existsSync(bundled)) return true;
@@ -606,7 +621,7 @@ function safeMut(fn: (...args: any[]) => any) {
 function wsArgs(workspace?: string, surface?: string): string[] {
   const args: string[] = [];
   const ws = workspace ?? process.env['CMUX_WORKSPACE_ID'];
-  const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+  const sf = surface ?? (workspace ? undefined : process.env['CMUX_SURFACE_ID']);
   if (ws) args.push('--workspace', ws);
   if (sf) args.push('--surface', sf);
   return args;
@@ -967,9 +982,12 @@ server.tool(
   {
     surface: z.string().describe('Surface ref to drag (e.g., "surface:8")'),
     direction: z.enum(['left', 'right', 'up', 'down']).describe('Direction to split into'),
+    workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
   },
-  safeMut(async ({ surface, direction }) => {
-    return ok(cmux('drag-surface-to-split', '--surface', surface, direction));
+  safeMut(async ({ surface, direction, workspace }) => {
+    const args = ['drag-surface-to-split', '--surface', surface, direction];
+    if (workspace) args.push('--workspace', workspace);
+    return ok(cmux(...args));
   }),
 );
 
@@ -997,7 +1015,7 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ref (e.g., "workspace:5")'),
   },
   safe(async ({ workspace }) => {
-    const args = ['list-pane-surfaces'];
+    const args = ['list-panels'];
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
   }),
@@ -1641,45 +1659,36 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
 
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
 
-    // 1. Create workspace
+    // 1. Create workspace and capture its ref
     const wsResult = cmux('new-workspace', '--cwd', workDir);
+    const wsRef = parseWorkspaceRef(wsResult);
 
     // 2. Rename workspace
     const name = workspace_name ?? `${def.label} x${count}`;
-    try { cmux('rename-workspace', name); } catch { /* ignore */ }
+    try { cmux('rename-workspace', name, ...(wsRef ? ['--workspace', wsRef] : [])); } catch { /* ignore */ }
 
-    // 3. Build grid by splitting
-    // Strategy: split right for columns, then split down within each
+    // 3. Build grid by splitting — pass workspace ref so splits go to the right workspace
     const cols = Math.ceil(Math.sqrt(count));
     const rows = Math.ceil(count / cols);
+    const wsFlag = wsRef ? ['--workspace', wsRef] : [];
 
     // Create additional columns by splitting right from the first pane
     for (let c = 1; c < cols; c++) {
-      try { cmux('new-split', 'right'); } catch { /* ignore */ }
+      try { cmux('new-split', 'right', ...wsFlag); } catch { /* ignore */ }
     }
 
     // For each column, split down for additional rows
-    // First, get all panes to know the column panes
-    // After splitting right N-1 times, we have N panes in a row
-    // Now split each down for rows
     if (rows > 1) {
-      // Get current panes
-      let paneList: string;
-      try { paneList = cmux('list-panes'); } catch { paneList = ''; }
-
-      // Split down from each existing pane to create rows
-      // We need to navigate to each column pane and split down
       for (let r = 1; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           if (r * cols + c >= count) break;
-          try { cmux('new-split', 'down'); } catch { /* ignore */ }
+          try { cmux('new-split', 'down', ...wsFlag); } catch { /* ignore */ }
         }
       }
     }
 
-    // 4. Get final pane list and launch CLI in each
-    let finalPanes: string;
-    try { finalPanes = cmux('list-pane-surfaces'); } catch { finalPanes = ''; }
+    // 4. Get final pane list using list-panels (returns ALL surfaces across ALL panes)
+    const surfaceRefs = allSurfaceRefs(wsRef ?? undefined);
 
     // Pre-trust directory and set up config
     ensureCliTrust(cli, workDir);
@@ -1692,16 +1701,14 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
       : '';
     const fullCmd = envPrefix + cliCmd;
 
-    // Send the command to each pane by sending to all surfaces in the workspace
-    // Parse pane surfaces to get surface refs
-    const surfaceRefs = finalPanes.match(/surface:\d+/g) ?? [];
+    // Send the command to each surface
     const launched: string[] = [];
 
     for (let i = 0; i < Math.min(surfaceRefs.length, count); i++) {
       const ref = surfaceRefs[i];
       try {
-        cmux('send', '--surface', ref, fullCmd);
-        cmux('send-key', '--surface', ref, 'enter');
+        cmux('send', '--surface', ref, ...wsFlag, fullCmd);
+        cmux('send-key', '--surface', ref, ...wsFlag, 'enter');
         launched.push(ref);
       } catch { /* ignore individual failures */ }
     }
@@ -1712,15 +1719,15 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
       await new Promise(r => setTimeout(r, 3000));
       for (const ref of launched) {
         try {
-          cmux('send', '--surface', ref, prompt);
-          cmux('send-key', '--surface', ref, 'enter');
+          cmux('send', '--surface', ref, ...wsFlag, prompt);
+          cmux('send-key', '--surface', ref, ...wsFlag, 'enter');
         } catch { /* ignore */ }
       }
     }
 
     // 6. Set sidebar status
     try {
-      cmux('set-status', 'agents', `${launched.length} ${def.label}`, '--icon', 'cpu');
+      cmux('set-status', ...wsFlag, 'agents', `${launched.length} ${def.label}`, '--icon', 'cpu');
     } catch { /* ignore */ }
 
     return ok({
@@ -1745,13 +1752,8 @@ server.tool(
   safe(async ({ workspace, lines: lineCount }) => {
     const numLines = lineCount ?? 20;
 
-    // Get pane surfaces
-    const args = ['list-pane-surfaces'];
-    if (workspace) args.push('--workspace', workspace);
-    let paneList: string;
-    try { paneList = cmux(...args); } catch { return ok({ panes: [] }); }
-
-    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    // Get all surfaces across all panes using list-panels
+    const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     const results: { surface: string; output: string }[] = [];
 
     for (const ref of surfaceRefs) {
@@ -1777,12 +1779,7 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
   safe(async ({ text, workspace }) => {
-    const args = ['list-pane-surfaces'];
-    if (workspace) args.push('--workspace', workspace);
-    let paneList: string;
-    try { paneList = cmux(...args); } catch { return ok({ sent_to: 0 }); }
-
-    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     let sent = 0;
 
     for (const ref of surfaceRefs) {
@@ -1824,13 +1821,8 @@ server.tool(
       sidebar = cmux(...args);
     } catch { /* ignore */ }
 
-    // Read all panes
-    const paneArgs = ['list-pane-surfaces'];
-    if (workspace) paneArgs.push('--workspace', workspace);
-    let paneList: string;
-    try { paneList = cmux(...paneArgs); } catch { paneList = ''; }
-
-    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    // Read all panes using list-panels (returns ALL surfaces across ALL panes)
+    const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     const panes: { surface: string; output: string }[] = [];
 
     for (const ref of surfaceRefs) {
@@ -1867,34 +1859,35 @@ server.tool(
 
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
 
-    // Create workspace
-    cmux('new-workspace', '--cwd', workDir);
+    // Create workspace and capture its ref
+    const wsResult = cmux('new-workspace', '--cwd', workDir);
+    const wsRef = parseWorkspaceRef(wsResult);
+    const wsFlag = wsRef ? ['--workspace', wsRef] : [];
+
     if (workspace_name) {
-      try { cmux('rename-workspace', workspace_name); } catch { /* ignore */ }
+      try { cmux('rename-workspace', workspace_name, ...wsFlag); } catch { /* ignore */ }
     }
 
     // Build grid: split right for cols, then split down for rows
     for (let c = 1; c < cols; c++) {
-      try { cmux('new-split', 'right'); } catch { /* ignore */ }
+      try { cmux('new-split', 'right', ...wsFlag); } catch { /* ignore */ }
     }
     if (rows > 1) {
       for (let r = 1; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           if (r * cols + c >= rows * cols) break;
-          try { cmux('new-split', 'down'); } catch { /* ignore */ }
+          try { cmux('new-split', 'down', ...wsFlag); } catch { /* ignore */ }
         }
       }
     }
 
     // Optionally run command in each pane
     if (command) {
-      let paneList: string;
-      try { paneList = cmux('list-pane-surfaces'); } catch { paneList = ''; }
-      const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+      const surfaceRefs = allSurfaceRefs(wsRef ?? undefined);
       for (const ref of surfaceRefs) {
         try {
-          cmux('send', '--surface', ref, command);
-          cmux('send-key', '--surface', ref, 'enter');
+          cmux('send', '--surface', ref, ...wsFlag, command);
+          cmux('send-key', '--surface', ref, ...wsFlag, 'enter');
         } catch { /* ignore */ }
       }
     }
@@ -1923,30 +1916,31 @@ ORCHESTRATION: After launching, use cmux_orchestrate to assign specific tasks to
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
     const count = agents.length;
 
-    // Create workspace
-    cmux('new-workspace', '--cwd', workDir);
+    // Create workspace and capture its ref
+    const wsResult = cmux('new-workspace', '--cwd', workDir);
+    const wsRef = parseWorkspaceRef(wsResult);
+    const wsFlag = wsRef ? ['--workspace', wsRef] : [];
+
     const name = workspace_name ?? `Mixed x${count}`;
-    try { cmux('rename-workspace', name); } catch { /* ignore */ }
+    try { cmux('rename-workspace', name, ...wsFlag); } catch { /* ignore */ }
 
     // Build grid
     const cols = Math.ceil(Math.sqrt(count));
     for (let c = 1; c < cols; c++) {
-      try { cmux('new-split', 'right'); } catch { /* ignore */ }
+      try { cmux('new-split', 'right', ...wsFlag); } catch { /* ignore */ }
     }
     const rows = Math.ceil(count / cols);
     if (rows > 1) {
       for (let r = 1; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           if (r * cols + c >= count) break;
-          try { cmux('new-split', 'down'); } catch { /* ignore */ }
+          try { cmux('new-split', 'down', ...wsFlag); } catch { /* ignore */ }
         }
       }
     }
 
-    // Get surfaces and launch each CLI
-    let paneList: string;
-    try { paneList = cmux('list-pane-surfaces'); } catch { paneList = ''; }
-    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    // Get all surfaces across all panes and launch each CLI
+    const surfaceRefs = allSurfaceRefs(wsRef ?? undefined);
     const launched: { surface: string; cli: string; label?: string }[] = [];
 
     for (let i = 0; i < Math.min(surfaceRefs.length, count); i++) {
@@ -1963,8 +1957,8 @@ ORCHESTRATION: After launching, use cmux_orchestrate to assign specific tasks to
       const fullCmd = envPrefix + [def.bin, ...def.skipPermFlags].join(' ');
 
       try {
-        cmux('send', '--surface', surfaceRefs[i], fullCmd);
-        cmux('send-key', '--surface', surfaceRefs[i], 'enter');
+        cmux('send', '--surface', surfaceRefs[i], ...wsFlag, fullCmd);
+        cmux('send-key', '--surface', surfaceRefs[i], ...wsFlag, 'enter');
         launched.push({ surface: surfaceRefs[i], cli: agent.cli, label: agent.label });
       } catch { /* ignore */ }
     }
@@ -2003,12 +1997,7 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ref'),
   },
   safe(async ({ key, workspace }) => {
-    const args = ['list-pane-surfaces'];
-    if (workspace) args.push('--workspace', workspace);
-    let paneList: string;
-    try { paneList = cmux(...args); } catch { return ok({ sent_to: 0 }); }
-
-    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     let sent = 0;
 
     for (const ref of surfaceRefs) {
@@ -2031,12 +2020,7 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ref'),
   },
   safe(async ({ texts, workspace }) => {
-    const args = ['list-pane-surfaces'];
-    if (workspace) args.push('--workspace', workspace);
-    let paneList: string;
-    try { paneList = cmux(...args); } catch { return ok({ sent_to: 0 }); }
-
-    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     let sent = 0;
 
     for (let i = 0; i < Math.min(surfaceRefs.length, texts.length); i++) {
@@ -2064,12 +2048,7 @@ server.tool(
     const numLines = lineCount ?? 20;
     const prompt = query ?? 'Briefly summarize what you have done and your current status.';
 
-    const args = ['list-pane-surfaces'];
-    if (workspace) args.push('--workspace', workspace);
-    let paneList: string;
-    try { paneList = cmux(...args); } catch { return ok({ panes: [] }); }
-
-    const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
+    const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     const results: { surface: string; output: string; queried: boolean }[] = [];
 
     for (const ref of surfaceRefs) {
@@ -2209,41 +2188,41 @@ Supports: claude, gemini, codex, opencode, goose.`,
     const fullCmd = envPrefix + [def.bin, ...def.skipPermFlags].join(' ');
 
     let surfRef: string;
+    let wsFlag: string[] = [];
 
     if (workspace) {
       // Add to existing workspace as a split
       const dir = direction ?? 'right';
       cmux('new-split', dir, '--workspace', workspace);
-      let surfList: string;
-      try { surfList = cmux('list-pane-surfaces', '--workspace', workspace); } catch { surfList = ''; }
-      const refs = surfList.match(/surface:\d+/g) ?? [];
+      const refs = allSurfaceRefs(workspace);
       surfRef = refs[refs.length - 1] ?? 'surface:?';
+      wsFlag = ['--workspace', workspace];
     } else {
-      // Create new workspace
-      cmux('new-workspace', '--cwd', workDir);
+      // Create new workspace and capture its ref
+      const wsResult = cmux('new-workspace', '--cwd', workDir);
+      const wsRef = parseWorkspaceRef(wsResult);
+      wsFlag = wsRef ? ['--workspace', wsRef] : [];
       const name = workspace_name ?? def.label;
-      try { cmux('rename-workspace', name); } catch { /* ignore */ }
-      let surfList: string;
-      try { surfList = cmux('list-pane-surfaces'); } catch { surfList = ''; }
-      const refs = surfList.match(/surface:\d+/g) ?? [];
+      try { cmux('rename-workspace', name, ...wsFlag); } catch { /* ignore */ }
+      const refs = allSurfaceRefs(wsRef ?? undefined);
       surfRef = refs[refs.length - 1] ?? 'surface:?';
     }
 
     // Launch the CLI
-    cmux('send', '--surface', surfRef, fullCmd);
-    cmux('send-key', '--surface', surfRef, 'enter');
+    cmux('send', '--surface', surfRef, ...wsFlag, fullCmd);
+    cmux('send-key', '--surface', surfRef, ...wsFlag, 'enter');
 
     // Set sidebar status
     try {
-      cmux('set-status', 'cli', def.label, '--icon', 'cpu');
+      cmux('set-status', ...wsFlag, 'cli', def.label, '--icon', 'cpu');
     } catch { /* ignore */ }
 
     // Optionally send initial prompt
     if (prompt) {
       await new Promise(r => setTimeout(r, 3000));
       try {
-        cmux('send', '--surface', surfRef, prompt);
-        cmux('send-key', '--surface', surfRef, 'enter');
+        cmux('send', '--surface', surfRef, ...wsFlag, prompt);
+        cmux('send-key', '--surface', surfRef, ...wsFlag, 'enter');
       } catch { /* ignore */ }
     }
 
@@ -2386,15 +2365,15 @@ Supports session resume for: Claude Code (--resume/--continue), Gemini CLI (--re
 
       // Build resume command for first surface
       const firstCmd = buildResumeCommand(firstSurface.cli, firstSurface.session_id, firstCwd);
-      cmux('new-workspace', '--cwd', firstCwd, '--command', firstCmd);
+      const recoverWsResult = cmux('new-workspace', '--cwd', firstCwd, '--command', firstCmd);
+      const recoverWsRef = parseWorkspaceRef(recoverWsResult);
+      const recoverWsFlag = recoverWsRef ? ['--workspace', recoverWsRef] : [];
 
       // Rename workspace
-      try { cmux('rename-workspace', mw.name); } catch { /* ignore */ }
+      try { cmux('rename-workspace', mw.name, ...recoverWsFlag); } catch { /* ignore */ }
 
       // Get the surface ref of the first pane we just created
-      let surfList: string;
-      try { surfList = cmux('list-pane-surfaces'); } catch { surfList = ''; }
-      const firstRefs = surfList.match(/surface:\d+/g) ?? [];
+      const firstRefs = allSurfaceRefs(recoverWsRef ?? undefined);
       const firstRef = firstRefs[firstRefs.length - 1] ?? 'surface:?';
 
       recoveredSurfaces.push({
@@ -2413,19 +2392,17 @@ Supports session resume for: Claude Code (--resume/--continue), Gemini CLI (--re
         // Alternate split direction for grid layout
         const dir = i % 2 === 1 ? 'right' : 'down';
         try {
-          cmux('new-split', dir);
+          cmux('new-split', dir, ...recoverWsFlag);
           // Small delay between spawns
           await new Promise(r => setTimeout(r, 500));
 
           // Get the new surface ref
-          let newSurfList: string;
-          try { newSurfList = cmux('list-pane-surfaces'); } catch { newSurfList = ''; }
-          const newRefs = newSurfList.match(/surface:\d+/g) ?? [];
+          const newRefs = allSurfaceRefs(recoverWsRef ?? undefined);
           const newRef = newRefs[newRefs.length - 1] ?? `surface:?`;
 
           // Send the resume command to the new split
-          cmux('send', '--surface', newRef, cmd);
-          cmux('send-key', '--surface', newRef, 'enter');
+          cmux('send', '--surface', newRef, ...recoverWsFlag, cmd);
+          cmux('send-key', '--surface', newRef, ...recoverWsFlag, 'enter');
 
           recoveredSurfaces.push({
             cli: surf.cli,
