@@ -930,19 +930,20 @@ server.tool(
   safeMut(async ({ window: win }) => ok(cmux('close-window', '--window', win))),
 );
 
-server.tool(
+registerBatchable(
   'cmux_rename_window',
   'Rename a window — this changes the TITLE BAR text at the very top of the window.',
   {
     title: z.string().describe('New window title'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
-  safeMut(async ({ title, workspace }) => {
+  async ({ title, workspace }) => {
     const args = ['rename-window'];
     if (workspace) args.push('--workspace', workspace);
     args.push(title);
     return ok(cmux(...args));
-  }),
+  },
+  true,
 );
 
 // ============================================================================
@@ -981,7 +982,7 @@ server.tool(
   }),
 );
 
-server.tool(
+registerBatchable(
   'cmux_rename_tab',
   'Rename a tab — this changes the name shown in the TAB BAR (top), NOT the sidebar. The sidebar shows workspace names (use cmux_rename_workspace for that). To rename the window title bar, use cmux_rename_window. IDs must use ref format like "tab:8", not bare numbers.',
   {
@@ -990,7 +991,7 @@ server.tool(
     tab: z.string().optional().describe('Tab ref (e.g., "tab:3")'),
     surface: z.string().optional().describe('Surface ref (e.g., "surface:8")'),
   },
-  safeMut(async ({ title, workspace, tab, surface }) => {
+  async ({ title, workspace, tab, surface }) => {
     const args = ['rename-tab'];
     if (workspace) args.push('--workspace', workspace);
     if (tab) args.push('--tab', tab);
@@ -998,7 +999,8 @@ server.tool(
     if (sf) args.push('--surface', sf);
     args.push(title);
     return ok(cmux(...args));
-  }),
+  },
+  true,
 );
 
 server.tool(
@@ -1109,17 +1111,18 @@ server.tool(
   }),
 );
 
-server.tool(
+registerBatchable(
   'cmux_list_pane_surfaces',
   'List all pane surfaces in a workspace — returns the surface refs (e.g., "surface:8") needed by other tools.',
   {
     workspace: z.string().optional().describe('Workspace ref (e.g., "workspace:5")'),
   },
-  safe(async ({ workspace }) => {
+  async ({ workspace }) => {
     const args = ['list-panels'];
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
-  }),
+  },
+  false,
 );
 
 server.tool(
@@ -1377,7 +1380,7 @@ server.tool(
 // G. SIDEBAR METADATA
 // ============================================================================
 
-server.tool(
+registerBatchable(
   'cmux_set_status',
   'Set a sidebar metadata status pill (key-value badge) for a workspace. This does NOT rename the workspace — use cmux_rename_workspace to change the sidebar name.',
   {
@@ -1387,27 +1390,29 @@ server.tool(
     color: z.string().optional().describe('Color hex (e.g., #ff0000)'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
-  safe(async ({ key, value, icon, color, workspace }) => {
+  async ({ key, value, icon, color, workspace }) => {
     const args = ['set-status', key, value];
     if (icon) args.push('--icon', icon);
     if (color) args.push('--color', color);
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
-  }),
+  },
+  false,
 );
 
-server.tool(
+registerBatchable(
   'cmux_clear_status',
   'Clear a sidebar status key.',
   {
     key: z.string().describe('Status key to clear'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
-  safe(async ({ key, workspace }) => {
+  async ({ key, workspace }) => {
     const args = ['clear-status', key];
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
-  }),
+  },
+  false,
 );
 
 server.tool(
@@ -1423,7 +1428,7 @@ server.tool(
   }),
 );
 
-server.tool(
+registerBatchable(
   'cmux_set_progress',
   'Set a sidebar progress indicator (0.0 to 1.0).',
   {
@@ -1431,28 +1436,30 @@ server.tool(
     label: z.string().optional().describe('Progress label text'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
-  safe(async ({ progress, label, workspace }) => {
+  async ({ progress, label, workspace }) => {
     const args = ['set-progress', String(progress)];
     if (label) args.push('--label', label);
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
-  }),
+  },
+  false,
 );
 
-server.tool(
+registerBatchable(
   'cmux_clear_progress',
   'Clear the sidebar progress indicator.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
-  safe(async ({ workspace }) => {
+  async ({ workspace }) => {
     const args = ['clear-progress'];
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
-  }),
+  },
+  false,
 );
 
-server.tool(
+registerBatchable(
   'cmux_log',
   'Write a log entry to the sidebar.',
   {
@@ -1461,14 +1468,15 @@ server.tool(
     source: z.string().optional().describe('Source name'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
-  safe(async ({ message, level, source, workspace }) => {
+  async ({ message, level, source, workspace }) => {
     const args = ['log'];
     if (level) args.push('--level', level);
     if (source) args.push('--source', source);
     if (workspace) args.push('--workspace', workspace);
     args.push('--', message);
     return ok(cmux(...args));
-  }),
+  },
+  false,
 );
 
 server.tool(
@@ -1488,7 +1496,7 @@ server.tool(
 // H. NOTIFICATIONS
 // ============================================================================
 
-server.tool(
+registerBatchable(
   'cmux_notify',
   'Send a notification to a workspace/surface. Shows blue ring and sidebar highlight.',
   {
@@ -1498,16 +1506,16 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
   },
-  safe(async ({ title, subtitle, body, workspace, surface }) => {
+  async ({ title, subtitle, body, workspace, surface }) => {
     const args = ['notify', '--title', title];
     if (subtitle) args.push('--subtitle', subtitle);
     if (body) args.push('--body', body);
     const ws = wsArgs(workspace, surface);
     args.push(...ws);
     return ok(cmux(...args));
-  }),
+  },
+  false,
 );
-
 server.tool(
   'cmux_list_notifications',
   'List all notifications.',
@@ -1752,7 +1760,7 @@ server.tool(
 // J. COMPOSITE / HIGH-LEVEL TOOLS
 // ============================================================================
 
-server.tool(
+registerBatchable(
   'cmux_launch_agents',
   `Create a workspace and launch N AI coding agents in a grid layout.
 Pre-trusts the directory and configures each CLI for autonomous mode.
@@ -1765,7 +1773,7 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
     workspace_name: z.string().optional().describe('Name for the new workspace'),
     prompt: z.string().optional().describe('Initial prompt to send to each agent after launch'),
   },
-  safeMut(async ({ cli, count, cwd, workspace_name, prompt }) => {
+  async ({ cli, count, cwd, workspace_name, prompt }) => {
     if (!isCmuxRunning()) {
       return err('CMUX is not running. Open cmux.app first.');
     }
@@ -1856,17 +1864,17 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
       command: fullCmd,
       ...(prompt ? { prompt_sent: prompt } : {}),
     });
-  }),
+  }, true,
 );
 
-server.tool(
+registerBatchable(
   'cmux_read_all',
   'Read output from all panes/surfaces in the current (or specified) workspace.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     lines: z.number().optional().describe('Lines per pane (default: 20)'),
   },
-  safe(async ({ workspace, lines: lineCount }) => {
+  async ({ workspace, lines: lineCount }) => {
     const numLines = lineCount ?? 20;
 
     // Get all surfaces across all panes using list-panels
@@ -1885,17 +1893,17 @@ server.tool(
     }
 
     return ok({ total: results.length, panes: results });
-  }),
+  }, false,
 );
 
-server.tool(
+registerBatchable(
   'cmux_broadcast',
   'Send the same text + Enter to ALL panes in a workspace — useful for broadcasting instructions to all agents at once.',
   {
     text: z.string().describe('Text to broadcast'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
-  safe(async ({ text, workspace }) => {
+  async ({ text, workspace }) => {
     const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     let sent = 0;
 
@@ -1909,7 +1917,7 @@ server.tool(
     }
 
     return ok({ sent_to: sent, total: surfaceRefs.length, text });
-  }),
+  }, false,
 );
 
 server.tool(
@@ -1961,7 +1969,7 @@ server.tool(
 // K. ADDITIONAL TOOLS (parity with wezterm-mcp)
 // ============================================================================
 
-server.tool(
+registerBatchable(
   'cmux_launch_grid',
   'Create a workspace with an exact rows×cols grid of panes, each running an optional command.',
   {
@@ -1971,7 +1979,7 @@ server.tool(
     cwd: z.string().optional().describe('Working directory'),
     workspace_name: z.string().optional().describe('Name for the workspace'),
   },
-  safeMut(async ({ rows, cols, command, cwd, workspace_name }) => {
+  async ({ rows, cols, command, cwd, workspace_name }) => {
     if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
 
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
@@ -2011,10 +2019,10 @@ server.tool(
     }
 
     return ok({ grid: `${rows}x${cols}`, total: rows * cols, workspace: workspace_name });
-  }),
+  }, true,
 );
 
-server.tool(
+registerBatchable(
   'cmux_launch_mixed',
   `Launch agents with DIFFERENT CLIs in one workspace — e.g., 2 Claude + 1 Gemini + 1 Codex.
 Pre-trusts directories and configures each CLI for autonomous mode.
@@ -2028,7 +2036,7 @@ ORCHESTRATION: After launching, use cmux_orchestrate to assign specific tasks to
     cwd: z.string().optional().describe('Working directory'),
     workspace_name: z.string().optional().describe('Name for the workspace'),
   },
-  safeMut(async ({ agents, cwd, workspace_name }) => {
+  async ({ agents, cwd, workspace_name }) => {
     if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
 
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
@@ -2083,7 +2091,7 @@ ORCHESTRATION: After launching, use cmux_orchestrate to assign specific tasks to
     }
 
     return ok({ workspace: name, launched });
-  }),
+  }, true,
 );
 
 server.tool(
@@ -2131,14 +2139,14 @@ server.tool(
   }),
 );
 
-server.tool(
+registerBatchable(
   'cmux_send_each',
   'Send DIFFERENT text to each pane in a workspace — useful for distributing tasks after cmux_launch_agents. Texts array maps to panes in surface order.',
   {
     texts: z.array(z.string()).describe('Array of texts, one per pane (in surface order)'),
     workspace: z.string().optional().describe('Workspace ref'),
   },
-  safe(async ({ texts, workspace }) => {
+  async ({ texts, workspace }) => {
     const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     let sent = 0;
 
@@ -2152,7 +2160,7 @@ server.tool(
     }
 
     return ok({ sent_to: sent, total: surfaceRefs.length });
-  }),
+  }, false,
 );
 
 server.tool(
@@ -2276,7 +2284,7 @@ server.tool(
   }),
 );
 
-server.tool(
+registerBatchable(
   'cmux_open_cli',
   `Open a single AI coding CLI in a new workspace or a new split in an existing workspace.
 Pre-trusts the directory and sets up config so the CLI starts without permission prompts.
@@ -2289,7 +2297,7 @@ Supports: claude, gemini, codex, opencode, goose.`,
     workspace_name: z.string().optional().describe('Name for new workspace (only when creating new)'),
     prompt: z.string().optional().describe('Initial prompt to send after CLI starts'),
   },
-  safeMut(async ({ cli, cwd, workspace, direction, workspace_name, prompt }) => {
+  async ({ cli, cwd, workspace, direction, workspace_name, prompt }) => {
     if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
 
     const def = CLI_DEFS[cli];
@@ -2352,10 +2360,10 @@ Supports: claude, gemini, codex, opencode, goose.`,
       cwd: workDir,
       ...(prompt ? { prompt_sent: prompt } : {}),
     });
-  }),
+  }, true,
 );
 
-server.tool(
+registerBatchable(
   'cmux_orchestrate',
   `Send different prompts/plans to specific surfaces in one call — the core orchestration tool.
 Use this after cmux_launch_agents or cmux_launch_mixed to distribute work to each agent.
@@ -2368,7 +2376,7 @@ Example: launch 4 Claude agents, then orchestrate by sending each agent its spec
     workspace: z.string().optional().describe('Workspace ref (optional)'),
     delay_ms: z.number().optional().describe('Delay between sends in ms (default: 500)'),
   },
-  safe(async ({ assignments, workspace, delay_ms }) => {
+  async ({ assignments, workspace, delay_ms }) => {
     const delay = delay_ms ?? 500;
     const results: { surface: string; sent: boolean; error?: string }[] = [];
 
@@ -2391,7 +2399,7 @@ Example: launch 4 Claude agents, then orchestrate by sending each agent its spec
       failed: assignments.length - sent,
       results,
     });
-  }),
+  }, false,
 );
 
 // ============================================================================
