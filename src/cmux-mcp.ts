@@ -934,8 +934,8 @@ server.tool(
   {},
   safeMut(async () => {
     const result = cmux('new-window');
-    const m = result.match(/window:\d+/);
-    return ok({ window_ref: m ? m[0] : null, raw: result });
+    const m = result.match(/OK\s+([0-9A-Fa-f-]{36})/);
+    return ok({ window_ref: m ? m[1] : null, raw: result });
   }),
 );
 
@@ -1642,13 +1642,19 @@ server.tool(
     surface: z.string().optional().describe('Browser surface ID/ref'),
   },
   safe(async ({ out, surface }) => {
+    const outPath = out ?? `/tmp/cmux-screenshot-${Date.now()}.png`;
     const args = ['browser'];
     const sf = surface ?? process.env['CMUX_SURFACE_ID'];
     if (sf) args.push('--surface', sf);
-    args.push('screenshot');
-    if (out) args.push('--out', out);
-    args.push('--json');
-    return ok(cmux(...args));
+    args.push('screenshot', '--out', outPath);
+    cmux(...args);
+    const data = readFileSync(outPath).toString('base64');
+    return {
+      content: [
+        { type: 'image' as const, data, mimeType: 'image/png' },
+        { type: 'text' as const, text: outPath },
+      ],
+    };
   }),
 );
 
