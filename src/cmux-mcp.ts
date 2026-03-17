@@ -624,6 +624,61 @@ function err(message: string): { content: { type: 'text'; text: string }[]; isEr
 
 const toolRegistry = new Map<string, { handler: (params: any) => Promise<any>; mutating: boolean }>();
 
+/** Drill into a nested object by path like ".surfaces[0].ref" */
+function drillPath(obj: unknown, path: string): unknown {
+  if (!path || obj == null) return obj;
+  const segments = path.match(/\.(\w+)|\[(\d+)\]/g);
+  if (!segments) return obj;
+  let cur: any = obj;
+  for (const seg of segments) {
+    if (cur == null) return undefined;
+    if (seg.startsWith('.')) cur = cur[seg.slice(1)];
+    else if (seg.startsWith('[')) cur = cur[parseInt(seg.slice(1, -1))];
+  }
+  return cur;
+}
+
+/** Resolve $steps[N].path.to.field references in a string value.
+ *  If the entire string is a single ref, returns the raw value (preserving type). */
+function resolveVarRef(value: string, outputs: unknown[]): unknown {
+  const fullMatch = value.match(/^\$steps\[(\d+)\](.*)$/);
+  if (fullMatch && value === fullMatch[0]) {
+    const stepIdx = parseInt(fullMatch[1]);
+    if (stepIdx >= outputs.length) return value;
+    return drillPath(outputs[stepIdx], fullMatch[2]);
+  }
+  return value.replace(/\$steps\[(\d+)\]([.\[][^\s,}"]*)/g, (_, idx, path) => {
+    const i = parseInt(idx);
+    if (i >= outputs.length) return _;
+    const resolved = drillPath(outputs[i], path);
+    return resolved != null ? String(resolved) : '';
+  });
+}
+
+/** Recursively resolve variable refs in all string values of a params object */
+function resolveAllVars(params: unknown, outputs: unknown[]): unknown {
+  if (typeof params === 'string') return resolveVarRef(params, outputs);
+  if (Array.isArray(params)) return params.map(v => resolveAllVars(v, outputs));
+  if (params && typeof params === 'object') {
+    const resolved: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(params)) {
+      resolved[key] = resolveAllVars(val, outputs);
+    }
+    return resolved;
+  }
+  return params;
+}
+
+/** Extract the data payload from an ok() response */
+function unwrapOk(result: any): unknown {
+  try {
+    if (result?.content?.[0]?.text) {
+      return JSON.parse(result.content[0].text);
+    }
+  } catch { /* not JSON, return as-is */ }
+  return result?.content?.[0]?.text ?? result;
+}
+
 /** Wrap a tool handler with standard error handling */
 function safe(fn: (...args: any[]) => any) {
   return async (...args: any[]) => {
