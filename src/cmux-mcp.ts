@@ -570,6 +570,16 @@ function allSurfaceRefs(workspace?: string): string[] {
   return panelList.match(/surface:\d+/g) ?? [];
 }
 
+/** Get all unique panel refs in a workspace. */
+function allPanelRefs(workspace?: string): string[] {
+  const args = ['list-panels'];
+  if (workspace) args.push('--workspace', workspace);
+  let panelList: string;
+  try { panelList = cmux(...args); } catch { return []; }
+  const refs = panelList.match(/panel:\d+/g) ?? [];
+  return [...new Set(refs)];
+}
+
 function isCmuxInstalled(): boolean {
   const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
   if (existsSync(bundled)) return true;
@@ -1677,12 +1687,13 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
       try { cmux('new-split', 'right', ...wsFlag); } catch { /* ignore */ }
     }
 
-    // For each column, split down for additional rows
+    // For each column, split down for additional rows — target each column's surface
     if (rows > 1) {
-      for (let r = 1; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
+      const colSurfaces = allSurfaceRefs(wsRef ?? undefined);
+      for (let c = 0; c < colSurfaces.length; c++) {
+        for (let r = 1; r < rows; r++) {
           if (r * cols + c >= count) break;
-          try { cmux('new-split', 'down', ...wsFlag); } catch { /* ignore */ }
+          try { cmux('new-split', 'down', '--surface', colSurfaces[c], ...wsFlag); } catch { /* ignore */ }
         }
       }
     }
@@ -1868,15 +1879,16 @@ server.tool(
       try { cmux('rename-workspace', workspace_name, ...wsFlag); } catch { /* ignore */ }
     }
 
-    // Build grid: split right for cols, then split down for rows
+    // Build grid: split right for cols, then split each column down for rows
     for (let c = 1; c < cols; c++) {
       try { cmux('new-split', 'right', ...wsFlag); } catch { /* ignore */ }
     }
     if (rows > 1) {
-      for (let r = 1; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (r * cols + c >= rows * cols) break;
-          try { cmux('new-split', 'down', ...wsFlag); } catch { /* ignore */ }
+      // Get the surface refs for each column so we can target splits correctly
+      const colSurfaces = allSurfaceRefs(wsRef ?? undefined);
+      for (const surface of colSurfaces) {
+        for (let r = 1; r < rows; r++) {
+          try { cmux('new-split', 'down', '--surface', surface, ...wsFlag); } catch { /* ignore */ }
         }
       }
     }
@@ -1931,10 +1943,11 @@ ORCHESTRATION: After launching, use cmux_orchestrate to assign specific tasks to
     }
     const rows = Math.ceil(count / cols);
     if (rows > 1) {
-      for (let r = 1; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
+      const colSurfaces = allSurfaceRefs(wsRef ?? undefined);
+      for (let c = 0; c < colSurfaces.length; c++) {
+        for (let r = 1; r < rows; r++) {
           if (r * cols + c >= count) break;
-          try { cmux('new-split', 'down', ...wsFlag); } catch { /* ignore */ }
+          try { cmux('new-split', 'down', '--surface', colSurfaces[c], ...wsFlag); } catch { /* ignore */ }
         }
       }
     }
