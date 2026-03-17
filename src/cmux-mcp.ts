@@ -585,6 +585,17 @@ function allSurfaceRefs(workspace?: string): string[] {
   return panelList.match(/surface:\d+/g) ?? [];
 }
 
+/** Resolve a pane ref to its first (selected) surface ref. If already a surface ref, return as-is. */
+function resolvePanelRef(ref: string, workspace?: string): string {
+  if (!ref.startsWith('pane:')) return ref;
+  const args = ['list-pane-surfaces', '--pane', ref];
+  if (workspace) args.push('--workspace', workspace);
+  const output = cmux(...args);
+  const m = output.match(/surface:\d+/);
+  if (!m) throw new Error(`No surfaces found in ${ref}`);
+  return m[0];
+}
+
 /** Get all unique panel refs in a workspace. */
 function allPanelRefs(workspace?: string): string[] {
   const args = ['list-panels'];
@@ -1377,7 +1388,8 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
   safe(async ({ panel, text, workspace }) => {
-    const args = ['send-panel', '--panel', panel];
+    const resolved = resolvePanelRef(panel, workspace);
+    const args = ['send-panel', '--panel', resolved];
     if (workspace) args.push('--workspace', workspace);
     args.push(text);
     return ok(cmux(...args));
