@@ -99,6 +99,7 @@ type SessionManifest = {
 
 const MANIFEST_DIR = PROJECT_ROOT ? join(PROJECT_ROOT, '.cmux-agent-mcp') : join(homedir(), '.cmux-agent-mcp');
 const MANIFEST_PATH = join(MANIFEST_DIR, 'session.json');
+const AUTOSAVE_PATH = join(MANIFEST_DIR, 'session.autosave.json');
 
 function saveManifest(manifest: SessionManifest): void {
   mkdirSync(MANIFEST_DIR, { recursive: true });
@@ -501,13 +502,27 @@ function captureManifest(): SessionManifest {
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+function saveAutoSave(manifest: SessionManifest): void {
+  mkdirSync(MANIFEST_DIR, { recursive: true });
+  writeFileSync(AUTOSAVE_PATH, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+}
+
+function loadAutoSave(): SessionManifest | null {
+  try {
+    if (!existsSync(AUTOSAVE_PATH)) return null;
+    return JSON.parse(readFileSync(AUTOSAVE_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function scheduleAutoSave(): void {
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
     try {
       if (isCmuxRunning()) {
         const manifest = captureManifest();
-        saveManifest(manifest);
+        saveAutoSave(manifest);
       }
     } catch { /* best effort */ }
     autoSaveTimer = null;
@@ -995,7 +1010,7 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
   },
   safeMut(async ({ surface, direction, workspace }) => {
-    const args = ['drag-surface-to-split', '--surface', surface, direction];
+    const args = ['drag-surface-to-split', '--surface', surface, '--direction', direction];
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
   }),
@@ -2337,6 +2352,10 @@ Supports session resume for: Claude Code (--resume/--continue), Gemini CLI (--re
       manifest = JSON.parse(readFileSync(path, 'utf8')) as SessionManifest;
     } catch {
       manifest = null;
+    }
+    // Fall back to autosave if no explicit manifest (or custom path) found
+    if (!manifest && !manifest_path) {
+      manifest = loadAutoSave();
     }
 
     if (!manifest) {
