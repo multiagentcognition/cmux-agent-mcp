@@ -919,7 +919,8 @@ server.tool(
     const args = ['rename-tab'];
     if (workspace) args.push('--workspace', workspace);
     if (tab) args.push('--tab', tab);
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push(title);
     return ok(cmux(...args));
   }),
@@ -1075,7 +1076,8 @@ When user says "horizontal pane/split", they mean side-by-side, so use "right".`
   safeMut(async ({ direction, workspace, surface, panel }) => {
     const args = ['new-split', direction];
     if (workspace) args.push('--workspace', workspace);
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     if (panel) args.push('--panel', panel);
     return ok(cmux(...args));
   }),
@@ -1158,7 +1160,8 @@ server.tool(
     const args = ['break-pane'];
     if (workspace) args.push('--workspace', workspace);
     if (pane) args.push('--pane', pane);
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     return ok(cmux(...args));
   }),
 );
@@ -1176,7 +1179,8 @@ server.tool(
     const args = ['join-pane', '--target-pane', target_pane];
     if (workspace) args.push('--workspace', workspace);
     if (pane) args.push('--pane', pane);
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     return ok(cmux(...args));
   }),
 );
@@ -1456,7 +1460,8 @@ server.tool(
   },
   safe(async ({ url, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('open');
     if (url) args.push(url);
     return ok(cmux(...args));
@@ -1473,7 +1478,8 @@ server.tool(
   },
   safe(async ({ action, url, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push(action);
     if (action === 'goto' && url) args.push(url);
     return ok(cmux(...args));
@@ -1492,7 +1498,8 @@ server.tool(
   },
   safe(async ({ interactive, compact, max_depth, selector, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('snapshot');
     if (interactive) args.push('--interactive');
     if (compact) args.push('--compact');
@@ -1511,7 +1518,8 @@ server.tool(
   },
   safe(async ({ out, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('screenshot');
     if (out) args.push('--out', out);
     args.push('--json');
@@ -1528,7 +1536,8 @@ server.tool(
   },
   safe(async ({ script, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('eval', script);
     return ok(cmux(...args));
   }),
@@ -1543,7 +1552,8 @@ server.tool(
   },
   safe(async ({ selector, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('click', selector);
     return ok(cmux(...args));
   }),
@@ -1559,7 +1569,8 @@ server.tool(
   },
   safe(async ({ selector, value, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('fill', selector, value);
     return ok(cmux(...args));
   }),
@@ -1575,7 +1586,8 @@ server.tool(
   },
   safe(async ({ selector, text, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('type', selector, text);
     return ok(cmux(...args));
   }),
@@ -1594,7 +1606,8 @@ server.tool(
   },
   safe(async ({ selector, text, url_contains, load_state, timeout_ms, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('wait');
     if (selector) args.push('--selector', selector);
     if (text) args.push('--text', text);
@@ -1616,7 +1629,8 @@ server.tool(
   },
   safe(async ({ property, selector, attribute, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('get', property);
     if (selector) args.push(selector);
     if (attribute) args.push(attribute);
@@ -1634,7 +1648,8 @@ server.tool(
   },
   safe(async ({ action, tab_index, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push('tab', action);
     if (tab_index) args.push(tab_index);
     return ok(cmux(...args));
@@ -1651,7 +1666,8 @@ server.tool(
   },
   safe(async ({ type, action, surface }) => {
     const args = ['browser'];
-    if (surface) args.push('--surface', surface);
+    const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+    if (sf) args.push('--surface', sf);
     args.push(type, action);
     return ok(cmux(...args));
   }),
