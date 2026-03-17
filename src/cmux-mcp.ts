@@ -823,11 +823,12 @@ server.tool(
 // B. WORKSPACE MANAGEMENT
 // ============================================================================
 
-server.tool(
+registerBatchable(
   'cmux_list_workspaces',
   'List all open workspaces.',
   {},
-  safe(async () => ok(cmux('list-workspaces'))),
+  async () => ok(cmux('list-workspaces')),
+  false,
 );
 
 server.tool(
@@ -870,19 +871,20 @@ server.tool(
   safeMut(async ({ workspace }) => ok(cmux('close-workspace', '--workspace', workspace))),
 );
 
-server.tool(
+registerBatchable(
   'cmux_rename_workspace',
   'Rename a workspace — this changes the name shown in the SIDEBAR. The sidebar displays workspace names, not tab names. Use this to rename what appears in the left sidebar.',
   {
     title: z.string().describe('New workspace title'),
     workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
   },
-  safeMut(async ({ title, workspace }) => {
+  async ({ title, workspace }) => {
     const args = ['rename-workspace'];
     if (workspace) args.push('--workspace', workspace);
     args.push(title);
     return ok(cmux(...args));
-  }),
+  },
+  true,
 );
 
 // ============================================================================
