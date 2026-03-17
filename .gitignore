@@ -3,3 +3,4 @@ build/
 *.tsbuildinfo
 .DS_Store
 .cmux-mcp/
+.cmux-swarm/
