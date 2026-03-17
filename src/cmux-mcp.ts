@@ -577,6 +577,31 @@ function resolvePanelRef(ref: string, workspace?: string): string {
   return m[0];
 }
 
+/** Map a key name (e.g. "enter", "ctrl+c") to text bytes for send-panel. */
+function keyToText(key: string): string | null {
+  const k = key.toLowerCase();
+  // Keys handled by CLI escape sequence parsing (literal \n, \r, \t in the string)
+  const escMap: Record<string, string> = {
+    'enter': '\\n', 'return': '\\r',
+    'tab': '\\t',
+  };
+  if (escMap[k]) return escMap[k];
+  // Raw byte control characters
+  const rawMap: Record<string, string> = {
+    'escape': '\x1b', 'esc': '\x1b',
+    'backspace': '\x7f',
+    'delete': '\x1b[3~',
+    'up': '\x1b[A', 'down': '\x1b[B',
+    'left': '\x1b[D', 'right': '\x1b[C',
+    'home': '\x1b[H', 'end': '\x1b[F',
+  };
+  if (rawMap[k]) return rawMap[k];
+  // ctrl+letter → raw control byte
+  const ctrlMatch = k.match(/^ctrl\+([a-z])$/);
+  if (ctrlMatch) return String.fromCharCode(ctrlMatch[1].charCodeAt(0) - 96);
+  return null;
+}
+
 /** Get all unique panel refs in a workspace. */
 function allPanelRefs(workspace?: string): string[] {
   const args = ['list-panels'];
@@ -2225,11 +2250,18 @@ server.tool(
   safe(async ({ key, workspace }) => {
     const surfaceRefs = allSurfaceRefs(workspace ?? undefined);
     let sent = 0;
+    const text = keyToText(key);
 
     for (const ref of surfaceRefs) {
       try {
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send-key-panel', '--panel', ref, ...ws, key);
+        if (text) {
+          // Use send-panel (works on ALL surfaces regardless of focus)
+          cmux('send-panel', '--panel', ref, ...ws, text);
+        } else {
+          // Fallback for unmapped keys: send-key-panel (focus-dependent)
+          cmux('send-key-panel', '--panel', ref, ...ws, key);
+        }
         sent++;
       } catch { /* ignore */ }
     }
@@ -2374,17 +2406,30 @@ server.tool(
   safe(async ({ output_path }) => {
     const ts = Date.now();
     const outPath = output_path ?? `/tmp/cmux-screenshot-${ts}.png`;
-    // Use macOS screencapture to capture the frontmost window
+    // Try to get the cmux window ID for a targeted capture
+    let captured = false;
     try {
-      execSync(`screencapture -l $(osascript -e 'tell app "cmux" to id of window 1') "${outPath}"`, {
-        timeout: 10_000,
-        encoding: 'utf8',
-      });
-    } catch {
-      // Fallback: capture the active window
-      execSync(`screencapture -w "${outPath}"`, { timeout: 10_000 });
+      // Use Python to query CGWindowListCopyWindowInfo for the cmux window ID
+      const windowId = execSync(
+        `python3 -c "
+import Quartz
+wl = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+for w in wl:
+    if w.get('kCGWindowOwnerName','') == 'cmux':
+        print(w['kCGWindowNumber']); break
+"`,
+        { timeout: 5_000, encoding: 'utf8' },
+      ).trim();
+      if (windowId && /^\d+$/.test(windowId)) {
+        execSync(`screencapture -l ${windowId} -x "${outPath}"`, { timeout: 10_000 });
+        captured = true;
+      }
+    } catch { /* fall through to full-screen capture */ }
+    if (!captured) {
+      // Fallback: capture entire screen non-interactively (-x = no sound)
+      execSync(`screencapture -x "${outPath}"`, { timeout: 10_000 });
     }
-    return ok({ screenshot: outPath });
+    return ok({ screenshot: outPath, ...(captured ? {} : { note: 'Captured full screen (could not isolate cmux window)' }) });
   }),
 );
 
