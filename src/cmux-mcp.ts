@@ -497,15 +497,8 @@ function captureManifest(): SessionManifest {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-save — save manifest after mutating operations
+// Session manifest persistence
 // ---------------------------------------------------------------------------
-
-let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-function saveAutoSave(manifest: SessionManifest): void {
-  mkdirSync(MANIFEST_DIR, { recursive: true });
-  writeFileSync(AUTOSAVE_PATH, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-}
 
 function loadAutoSave(): SessionManifest | null {
   try {
@@ -516,18 +509,6 @@ function loadAutoSave(): SessionManifest | null {
   }
 }
 
-function scheduleAutoSave(): void {
-  if (autoSaveTimer) clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => {
-    try {
-      if (isCmuxRunning()) {
-        const manifest = captureManifest();
-        saveAutoSave(manifest);
-      }
-    } catch { /* best effort */ }
-    autoSaveTimer = null;
-  }, 2000); // 2 second debounce
-}
 
 // ---------------------------------------------------------------------------
 // CMUX CLI Helpers
@@ -709,13 +690,11 @@ function safe(fn: (...args: any[]) => any) {
   };
 }
 
-/** Wrap a MUTATING tool handler — auto-saves session after success */
+/** Wrap a MUTATING tool handler with standard error handling */
 function safeMut(fn: (...args: any[]) => any) {
   return async (...args: any[]) => {
     try {
-      const result = await fn(...args);
-      scheduleAutoSave();
-      return result;
+      return await fn(...args);
     } catch (e: any) {
       return err(enrichError(e.message ?? String(e)));
     }
@@ -2028,8 +2007,8 @@ registerBatchable(
     for (const ref of surfaceRefs) {
       try {
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send', '--surface', ref, ...ws, text);
-        cmux('send-key', '--surface', ref, ...ws, 'enter');
+        cmux('send-panel', '--panel', ref, ...ws, text);
+        cmux('send-key-panel', '--panel', ref, ...ws, 'enter');
         sent++;
       } catch { /* ignore */ }
     }
@@ -2227,8 +2206,8 @@ server.tool(
     for (const ref of surface_refs) {
       try {
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send', '--surface', ref, ...ws, text);
-        cmux('send-key', '--surface', ref, ...ws, 'enter');
+        cmux('send-panel', '--panel', ref, ...ws, text);
+        cmux('send-key-panel', '--panel', ref, ...ws, 'enter');
         sent++;
       } catch { /* ignore */ }
     }
@@ -2250,7 +2229,7 @@ server.tool(
     for (const ref of surfaceRefs) {
       try {
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send-key', '--surface', ref, ...ws, key);
+        cmux('send-key-panel', '--panel', ref, ...ws, key);
         sent++;
       } catch { /* ignore */ }
     }
@@ -2273,8 +2252,8 @@ registerBatchable(
     for (let i = 0; i < Math.min(surfaceRefs.length, texts.length); i++) {
       try {
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send', '--surface', surfaceRefs[i], ...ws, texts[i]);
-        cmux('send-key', '--surface', surfaceRefs[i], ...ws, 'enter');
+        cmux('send-panel', '--panel', surfaceRefs[i], ...ws, texts[i]);
+        cmux('send-key-panel', '--panel', surfaceRefs[i], ...ws, 'enter');
         sent++;
       } catch { /* ignore */ }
     }
@@ -2508,8 +2487,8 @@ Example: launch 4 Claude agents, then orchestrate by sending each agent its spec
     for (const assignment of assignments) {
       try {
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send', '--surface', assignment.surface, ...ws, assignment.text);
-        cmux('send-key', '--surface', assignment.surface, ...ws, 'enter');
+        cmux('send-panel', '--panel', assignment.surface, ...ws, assignment.text);
+        cmux('send-key-panel', '--panel', assignment.surface, ...ws, 'enter');
         results.push({ surface: assignment.surface, sent: true });
       } catch (e: any) {
         results.push({ surface: assignment.surface, sent: false, error: e.message });
@@ -2594,7 +2573,7 @@ Error handling: By default, stops on first error. Set continue_on_error: true to
 
 server.tool(
   'cmux_session_save',
-  'Save current CMUX state (workspaces, panes, CLIs, session IDs) to a manifest for crash recovery. Sessions are also auto-saved after every mutating operation, but you can call this manually to force an immediate save.',
+  'Save current CMUX state (workspaces, panes, CLIs, session IDs) to a manifest for crash recovery. Call this after launching agents or making changes you want to be recoverable.',
   {},
   safe(async () => {
     if (!isCmuxRunning()) {
@@ -2647,7 +2626,7 @@ Supports session resume for: Claude Code (--resume/--continue), Gemini CLI (--re
       return ok({
         error: 'No session manifest found.',
         path,
-        note: 'Use cmux_session_save to create one while agents are running, or sessions are auto-saved after every mutating operation.',
+        note: 'Use cmux_session_save to create one while agents are running.',
       });
     }
 
@@ -2777,7 +2756,7 @@ server.tool(
       return ok({
         has_manifest: false,
         live_surfaces: liveSurfaces.length,
-        note: 'No saved manifest. Call cmux_session_save to create one, or it will be auto-saved on the next mutating operation.',
+        note: 'No saved manifest. Call cmux_session_save to create one.',
         live: liveSurfaces,
       });
     }
