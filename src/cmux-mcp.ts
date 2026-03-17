@@ -864,11 +864,24 @@ server.tool(
 
 server.tool(
   'cmux_close_workspace',
-  'Close a workspace and all its panes.',
+  'Close one or more workspaces and all their panes. Pass a single ref or an array of refs.',
   {
-    workspace: z.string().describe('Workspace ID or ref to close'),
+    workspace: z.union([z.string(), z.array(z.string())]).describe('Workspace ref(s) to close — single string or array of strings'),
   },
-  safeMut(async ({ workspace }) => ok(cmux('close-workspace', '--workspace', workspace))),
+  safeMut(async ({ workspace }) => {
+    const refs = Array.isArray(workspace) ? workspace : [workspace];
+    const results: { ref: string; closed: boolean; error?: string }[] = [];
+    for (const ref of refs) {
+      try {
+        cmux('close-workspace', '--workspace', ref);
+        results.push({ ref, closed: true });
+      } catch (e: any) {
+        results.push({ ref, closed: false, error: e.message });
+      }
+    }
+    if (refs.length === 1) return ok(results[0].closed ? `OK ${refs[0]}` : results[0].error);
+    return ok({ closed: results.filter(r => r.closed).length, total: refs.length, results });
+  }),
 );
 
 registerBatchable(
@@ -2293,24 +2306,29 @@ server.tool(
 
 server.tool(
   'cmux_close_all',
-  'Close ALL workspaces — full shutdown of all panes.',
-  {},
-  safeMut(async () => {
-    // List all workspaces and close each
+  'Close ALL workspaces (or all except specific ones). Use `except` to keep certain workspaces open — e.g., keep your own workspace while closing all test workspaces.',
+  {
+    except: z.array(z.string()).optional().describe('Workspace refs to keep open (e.g., ["workspace:1"])'),
+  },
+  safeMut(async ({ except }) => {
+    // List all workspaces and close each (except excluded ones)
     let wsList: string;
     try { wsList = cmux('list-workspaces'); } catch { return ok({ closed: 0 }); }
 
     const wsRefs = wsList.match(/workspace:\d+/g) ?? [];
+    const excludeSet = new Set(except ?? []);
     let closed = 0;
+    const skipped: string[] = [];
 
     for (const ref of wsRefs) {
+      if (excludeSet.has(ref)) { skipped.push(ref); continue; }
       try {
         cmux('close-workspace', '--workspace', ref);
         closed++;
       } catch { /* ignore */ }
     }
 
-    return ok({ closed, total: wsRefs.length });
+    return ok({ closed, total: wsRefs.length, skipped: skipped.length > 0 ? skipped : undefined });
   }),
 );
 

@@ -86,7 +86,7 @@ All test workspaces are still open in CMUX for the user to visually inspect.
 
 > "All 6 test runners are complete and the report is above. All test workspaces are still open in CMUX for you to visually inspect. Once you've verified everything looks correct, would you like me to clean up all test workspaces?"
 
-**Only after the user confirms**, close each test workspace by name. Do NOT use `cmux_close_all`.
+**Only after the user confirms**, use `cmux_close_all` with `except: ["workspace:1"]` (your own workspace) to close all test workspaces in ONE call. Do NOT close them one-by-one.
 
 ### Phase 7: Final Report
 
