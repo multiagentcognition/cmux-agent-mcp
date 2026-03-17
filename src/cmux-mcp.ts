@@ -1765,15 +1765,22 @@ registerBatchable(
   `Create a workspace and launch N AI coding agents in a grid layout.
 Pre-trusts the directory and configures each CLI for autonomous mode.
 Supports: ${Object.keys(CLI_DEFS).join(', ')}.
-ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent its specific task, or cmux_send_each to send different prompts to each pane, or cmux_broadcast to send the same prompt to all.`,
+ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent its specific task, or cmux_send_each to send different prompts to each pane, or cmux_broadcast to send the same prompt to all.
+INLINE ORCHESTRATION: You can also pass assignments, tab_names, status, and progress directly to do everything in one call.`,
   {
     cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('Which AI CLI to launch'),
     count: z.number().min(1).max(12).describe('Number of agent panes'),
     cwd: z.string().optional().describe('Working directory (default: project root)'),
     workspace_name: z.string().optional().describe('Name for the new workspace'),
-    prompt: z.string().optional().describe('Initial prompt to send to each agent after launch'),
+    prompt: z.string().optional().describe('Initial prompt to send to ALL agents after launch (ignored if assignments is set)'),
+    assignments: z.array(z.string()).optional().describe('Different prompt for each agent in surface order. Overrides prompt.'),
+    tab_names: z.array(z.string()).optional().describe('Rename tabs for each surface in order'),
+    status: z.record(z.string(), z.string()).optional().describe('Additional sidebar status pills (key-value pairs)'),
+    progress: z.number().min(0).max(1).optional().describe('Initial progress indicator (0.0 to 1.0)'),
+    progress_label: z.string().optional().describe('Label for the progress indicator'),
+    delay_ms: z.number().optional().describe('Delay between sending assignments in ms (default: 500)'),
   },
-  async ({ cli, count, cwd, workspace_name, prompt }) => {
+  async ({ cli, count, cwd, workspace_name, prompt, assignments, tab_names, status, progress, progress_label, delay_ms }) => {
     if (!isCmuxRunning()) {
       return err('CMUX is not running. Open cmux.app first.');
     }
@@ -1838,10 +1845,28 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
       } catch { /* ignore individual failures */ }
     }
 
-    // 5. Optionally send initial prompt after a brief delay
-    if (prompt && launched.length > 0) {
-      // Wait a moment for CLIs to start
+    // 5. Wait for CLIs to start before sending anything
+    const needsWait = prompt || assignments;
+    if (needsWait && launched.length > 0) {
       await new Promise(r => setTimeout(r, 3000));
+    }
+
+    // 5a. Send individual assignments (overrides prompt)
+    let assignmentsSent = 0;
+    if (assignments && assignments.length > 0 && launched.length > 0) {
+      const assignDelay = delay_ms ?? 500;
+      for (let i = 0; i < Math.min(launched.length, assignments.length); i++) {
+        try {
+          cmux('send', '--surface', launched[i], ...wsFlag, assignments[i]);
+          cmux('send-key', '--surface', launched[i], ...wsFlag, 'enter');
+          assignmentsSent++;
+        } catch { /* ignore */ }
+        if (assignDelay > 0 && i < assignments.length - 1) {
+          await new Promise(r => setTimeout(r, assignDelay));
+        }
+      }
+    } else if (prompt && launched.length > 0) {
+      // 5b. Send same prompt to all (original behavior)
       for (const ref of launched) {
         try {
           cmux('send', '--surface', ref, ...wsFlag, prompt);
@@ -1850,19 +1875,45 @@ ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent
       }
     }
 
+    // 5c. Rename tabs if provided
+    if (tab_names && tab_names.length > 0) {
+      for (let i = 0; i < Math.min(launched.length, tab_names.length); i++) {
+        try { cmux('rename-tab', '--surface', launched[i], ...wsFlag, tab_names[i]); } catch { /* ignore */ }
+      }
+    }
+
+    // 5d. Set progress if provided
+    if (progress !== undefined) {
+      try {
+        const pArgs = ['set-progress', String(progress), ...wsFlag];
+        if (progress_label) pArgs.push('--label', progress_label);
+        cmux(...pArgs);
+      } catch { /* ignore */ }
+    }
+
     // 6. Set sidebar status
     try {
       cmux('set-status', ...wsFlag, 'agents', `${launched.length} ${def.label}`, '--icon', 'cpu');
     } catch { /* ignore */ }
 
+    // 6b. Set custom status pills
+    if (status) {
+      for (const [key, value] of Object.entries(status)) {
+        try { cmux('set-status', ...wsFlag, key, String(value)); } catch { /* ignore */ }
+      }
+    }
+
     return ok({
       workspace: name,
+      workspace_ref: wsRef,
       cli: cli,
       grid: `${cols}x${rows}`,
       launched: launched.length,
       surfaces: launched,
       command: fullCmd,
-      ...(prompt ? { prompt_sent: prompt } : {}),
+      ...(prompt && !assignments ? { prompt_sent: prompt } : {}),
+      ...(assignments ? { assignments_sent: assignmentsSent } : {}),
+      ...(tab_names ? { tabs_renamed: Math.min(launched.length, tab_names.length) } : {}),
     });
   }, true,
 );
