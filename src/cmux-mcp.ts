@@ -2810,26 +2810,21 @@ server.tool(
       w.surfaces.map(s => ({ workspace: w.name, ...s }))
     );
 
-    // Compare by workspace name + CLI type
-    const manifestClis = manifestSurfaces.map(s => `${s.workspace}/${s.cli}`);
-    const liveClis = liveSurfaces.map(s => `${s.workspace}/${s.cli}`);
+    // Compare by surface_ref (unique per surface) for accurate drift detection
+    const manifestRefs = new Set(manifestSurfaces.map(s => s.surface_ref));
+    const liveRefs = new Set(liveSurfaces.map(s => s.surface_ref));
 
-    const disappeared = manifestSurfaces.filter(ms =>
-      !liveClis.includes(`${ms.workspace}/${ms.cli}`)
-    );
-    const appeared = liveSurfaces.filter(ls =>
-      !manifestClis.includes(`${ls.workspace}/${ls.cli}`)
-    );
+    const disappeared = manifestSurfaces.filter(ms => !liveRefs.has(ms.surface_ref));
+    const appeared = liveSurfaces.filter(ls => !manifestRefs.has(ls.surface_ref));
 
-    const sessionChanges: { workspace: string; cli: string; old_session: string | null; new_session: string | null }[] = [];
+    const sessionChanges: { workspace: string; cli: string; surface_ref: string; old_session: string | null; new_session: string | null }[] = [];
     for (const ms of manifestSurfaces) {
-      const matching = liveSurfaces.find(ls =>
-        ls.workspace === ms.workspace && ls.cli === ms.cli
-      );
+      const matching = liveSurfaces.find(ls => ls.surface_ref === ms.surface_ref);
       if (matching && ms.session_id && matching.session_id && ms.session_id !== matching.session_id) {
         sessionChanges.push({
           workspace: ms.workspace,
           cli: ms.cli,
+          surface_ref: ms.surface_ref,
           old_session: ms.session_id,
           new_session: matching.session_id,
         });
