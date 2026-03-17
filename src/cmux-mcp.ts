@@ -648,6 +648,18 @@ function safeMut(fn: (...args: any[]) => any) {
   };
 }
 
+/** Register a tool that can be called from cmux_batch. Also registers with the MCP server. */
+function registerBatchable(
+  name: string,
+  desc: string,
+  schema: Record<string, z.ZodType<any>>,
+  handler: (params: any) => Promise<any>,
+  mutating: boolean,
+) {
+  toolRegistry.set(name, { handler, mutating });
+  server.tool(name, desc, schema, mutating ? safeMut(handler) : safe(handler));
+}
+
 /** Default workspace/surface from params or env */
 function wsArgs(workspace?: string, surface?: string): string[] {
   const args: string[] = [];
