@@ -90,7 +90,7 @@ cmux-agent-mcp init --root /path # per-project setup (specific dir)
 ### Install from source
 
 ```bash
-git clone https://github.com/AbhiShake1/cmux-agent-mcp.git
+git clone https://github.com/multiagentcognition/cmux-agent-mcp.git
 cd cmux-agent-mcp
 npm install --ignore-scripts
 npm run build
@@ -344,4 +344,4 @@ Tests leave all workspaces open for human visual verification before cleanup.
 
 ## License
 
-MIT
+[PolyForm Strict 1.0.0](https://polyformproject.org/licenses/strict/1.0.0)
