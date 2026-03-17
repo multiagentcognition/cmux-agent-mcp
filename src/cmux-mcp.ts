@@ -1297,7 +1297,7 @@ server.tool(
 
 server.tool(
   'cmux_send',
-  'Send text to a surface without pressing Enter.',
+  'Send text to a PLAIN TERMINAL surface without pressing Enter. DOES NOT work on AI CLI surfaces — use cmux_orchestrate, cmux_broadcast, or cmux_send_each for agent surfaces.',
   {
     text: z.string().describe('Text to send'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
@@ -1311,7 +1311,7 @@ server.tool(
 
 server.tool(
   'cmux_send_submit',
-  'Send text and press Enter — primary method for injecting commands and prompts.',
+  'Send text and press Enter to a PLAIN TERMINAL surface. DOES NOT work on AI CLI surfaces (returns "Surface is not a terminal"). To send prompts to AI agents, use cmux_orchestrate, cmux_broadcast, or cmux_send_each instead.',
   {
     text: z.string().describe('Text to send'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
@@ -1327,7 +1327,7 @@ server.tool(
 
 server.tool(
   'cmux_send_key',
-  'Send a key press (enter, tab, escape, backspace, delete, up, down, left, right, ctrl+c, etc.).',
+  'Send a key press to a PLAIN TERMINAL surface (enter, tab, escape, backspace, delete, up, down, left, right, ctrl+c, etc.). DOES NOT work on AI CLI surfaces — use cmux_send_key_all for agent workspaces.',
   {
     key: z.string().describe('Key to send (e.g., enter, tab, escape, ctrl+c, up, down)'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
@@ -1357,7 +1357,7 @@ server.tool(
 
 server.tool(
   'cmux_read_screen',
-  'Read terminal output from a surface. Use --scrollback to include scroll buffer.',
+  'Read terminal output from a PLAIN TERMINAL surface. DOES NOT work on surfaces running AI CLIs (Claude, Gemini, etc.) — those return "Surface is not a terminal". To read from AI agent surfaces, use cmux_read_all or cmux_read_all_deep instead. Use --scrollback to include scroll buffer.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
@@ -1374,7 +1374,7 @@ server.tool(
 
 server.tool(
   'cmux_capture_pane',
-  'Capture pane output (tmux-compatible). Alias for read-screen.',
+  'Capture pane output (tmux-compatible). Same limitations as cmux_read_screen — only works on plain terminal surfaces, NOT AI CLI surfaces.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
@@ -1933,7 +1933,7 @@ INLINE ORCHESTRATION: Pass assignments (different prompt per agent), tab_names, 
 
 registerBatchable(
   'cmux_read_all',
-  'Read output from all panes/surfaces in the current (or specified) workspace.',
+  'Read output from ALL panes in a workspace — works on both plain terminals AND AI CLI surfaces. This is the preferred way to read agent output. For individual surface reads on plain terminals only, use cmux_read_screen.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     lines: z.number().optional().describe('Lines per pane (default: 20)'),
