@@ -1135,10 +1135,27 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
   },
   safeMut(async ({ surface, direction, workspace }) => {
-    // Direction is a positional arg (like new-split), surface and workspace are flags
-    const args = ['drag-surface-to-split', direction, '--surface', surface];
-    if (workspace) args.push('--workspace', workspace);
-    return ok(cmux(...args));
+    // Try native command first
+    try {
+      const args = ['drag-surface-to-split', direction, '--surface', surface];
+      if (workspace) args.push('--workspace', workspace);
+      return ok(cmux(...args));
+    } catch {
+      // Workaround: native command has surface lookup bug — emulate with new-split + move-surface
+      const ws = workspace ?? undefined;
+      const beforePanes = allSurfaceRefs(ws);
+      const splitArgs = ['new-split', direction];
+      if (workspace) splitArgs.push('--workspace', workspace);
+      cmux(...splitArgs);
+      const afterPanes = allSurfaceRefs(ws);
+      const newRef = afterPanes.find(r => !beforePanes.includes(r));
+      if (!newRef) throw new Error('Failed to create new split pane');
+      // Move the original surface into the new pane
+      const moveArgs = ['move-surface', '--surface', surface];
+      if (workspace) moveArgs.push('--workspace', workspace);
+      cmux(...moveArgs);
+      return ok(`OK (emulated: split ${direction}, moved ${surface})`);
+    }
   }),
 );
 
@@ -2584,8 +2601,9 @@ Example: launch 4 Claude agents, then orchestrate by sending each agent its spec
       try {
         const resolved = resolvePanelRef(assignment.surface, workspace);
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send-panel', '--panel', resolved, ...ws, assignment.text);
-        cmux('send-key-panel', '--panel', resolved, ...ws, 'enter');
+        // Use send/send-key (like launch_agents) — works on both terminal and AI CLI surfaces
+        cmux('send', '--surface', resolved, ...ws, assignment.text);
+        cmux('send-key', '--surface', resolved, ...ws, 'enter');
         results.push({ surface: assignment.surface, sent: true });
       } catch (e: any) {
         results.push({ surface: assignment.surface, sent: false, error: e.message });
