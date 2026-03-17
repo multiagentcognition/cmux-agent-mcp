@@ -680,12 +680,20 @@ function unwrapOk(result: any): unknown {
 }
 
 /** Wrap a tool handler with standard error handling */
+/** Enrich common errors with actionable suggestions */
+function enrichError(msg: string): string {
+  if (msg.includes('Surface is not a terminal')) {
+    return msg + '\n\nHINT: This surface is running an AI CLI. Use cmux_read_all (not cmux_read_screen) to read, and cmux_orchestrate (not cmux_send/cmux_send_submit) to send prompts.';
+  }
+  return msg;
+}
+
 function safe(fn: (...args: any[]) => any) {
   return async (...args: any[]) => {
     try {
       return await fn(...args);
     } catch (e: any) {
-      return err(e.message ?? String(e));
+      return err(enrichError(e.message ?? String(e)));
     }
   };
 }
@@ -698,7 +706,7 @@ function safeMut(fn: (...args: any[]) => any) {
       scheduleAutoSave();
       return result;
     } catch (e: any) {
-      return err(e.message ?? String(e));
+      return err(enrichError(e.message ?? String(e)));
     }
   };
 }
@@ -840,7 +848,7 @@ server.tool(
 
 server.tool(
   'cmux_new_workspace',
-  'Create a new workspace with optional working directory and command.',
+  'Create a new workspace. Returns the workspace_ref so you can use it immediately without a follow-up list call.',
   {
     cwd: z.string().optional().describe('Working directory for the new workspace'),
     command: z.string().optional().describe('Command to run in the initial pane'),
@@ -849,7 +857,9 @@ server.tool(
     const args = ['new-workspace'];
     if (cwd) args.push('--cwd', cwd);
     if (command) args.push('--command', command);
-    return ok(cmux(...args));
+    const result = cmux(...args);
+    const wsRef = parseWorkspaceRef(result);
+    return ok({ workspace_ref: wsRef, raw: result });
   }),
 );
 
@@ -920,9 +930,13 @@ server.tool(
 
 server.tool(
   'cmux_new_window',
-  'Create a new window.',
+  'Create a new window. Returns the window ref.',
   {},
-  safeMut(async () => ok(cmux('new-window'))),
+  safeMut(async () => {
+    const result = cmux('new-window');
+    const m = result.match(/window:\d+/);
+    return ok({ window_ref: m ? m[0] : null, raw: result });
+  }),
 );
 
 server.tool(
@@ -973,12 +987,17 @@ server.tool(
     url: z.string().optional().describe('URL for browser surfaces'),
   },
   safeMut(async ({ type, pane, workspace, url }) => {
+    const ws = workspace ?? undefined;
+    const beforeRefs = allSurfaceRefs(ws);
     const args = ['new-surface'];
     if (type) args.push('--type', type);
     if (pane) args.push('--pane', pane);
     if (workspace) args.push('--workspace', workspace);
     if (url) args.push('--url', url);
-    return ok(cmux(...args));
+    const result = cmux(...args);
+    const afterRefs = allSurfaceRefs(ws);
+    const newRef = afterRefs.find(r => !beforeRefs.includes(r));
+    return ok({ surface: newRef ?? null, raw: result });
   }),
 );
 
@@ -1153,7 +1172,7 @@ server.tool(
 
 server.tool(
   'cmux_new_split',
-  `Split an existing pane. Direction meanings:
+  `Split an existing pane. Returns the new surface ref and updated pane count.
 - "right" or "left" = side-by-side (horizontal split, vertical divider) — like Cmd+D
 - "down" or "up" = stacked top/bottom (vertical split, horizontal divider) — like Cmd+Shift+D
 When user says "vertical pane/split", they mean stacked top-bottom, so use "down".
@@ -1165,18 +1184,23 @@ When user says "horizontal pane/split", they mean side-by-side, so use "right".`
     panel: z.string().optional().describe('Panel ID/ref to split from'),
   },
   safeMut(async ({ direction, workspace, surface, panel }) => {
+    const ws = workspace ?? undefined;
+    const beforeRefs = allSurfaceRefs(ws);
     const args = ['new-split', direction];
     if (workspace) args.push('--workspace', workspace);
     const sf = surface ?? process.env['CMUX_SURFACE_ID'];
     if (sf) args.push('--surface', sf);
     if (panel) args.push('--panel', panel);
-    return ok(cmux(...args));
+    const result = cmux(...args);
+    const afterRefs = allSurfaceRefs(ws);
+    const newRef = afterRefs.find(r => !beforeRefs.includes(r));
+    return ok({ surface: newRef ?? null, pane_count: afterRefs.length, raw: result });
   }),
 );
 
 server.tool(
   'cmux_new_pane',
-  'Create a new pane (terminal or browser) in a workspace.',
+  'Create a new pane (terminal or browser) in a workspace. Returns the new surface ref.',
   {
     type: z.enum(['terminal', 'browser']).optional().describe('Pane type'),
     direction: z.enum(['left', 'right', 'up', 'down']).optional().describe('Split direction'),
@@ -1184,12 +1208,17 @@ server.tool(
     url: z.string().optional().describe('URL for browser panes'),
   },
   safeMut(async ({ type, direction, workspace, url }) => {
+    const ws = workspace ?? undefined;
+    const beforeRefs = allSurfaceRefs(ws);
     const args = ['new-pane'];
     if (type) args.push('--type', type);
     if (direction) args.push('--direction', direction);
     if (workspace) args.push('--workspace', workspace);
     if (url) args.push('--url', url);
-    return ok(cmux(...args));
+    const result = cmux(...args);
+    const afterRefs = allSurfaceRefs(ws);
+    const newRef = afterRefs.find(r => !beforeRefs.includes(r));
+    return ok({ surface: newRef ?? null, pane_count: afterRefs.length, raw: result });
   }),
 );
 
