@@ -1135,9 +1135,9 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
   },
   safeMut(async ({ surface, direction, workspace }) => {
-    const args = ['drag-surface-to-split'];
+    // Direction is a positional arg (like new-split), surface and workspace are flags
+    const args = ['drag-surface-to-split', direction, '--surface', surface];
     if (workspace) args.push('--workspace', workspace);
-    args.push('--surface', surface, '--direction', direction);
     return ok(cmux(...args));
   }),
 );
@@ -1555,8 +1555,8 @@ server.tool(
 // H. NOTIFICATIONS
 // ============================================================================
 
-/** Notification IDs that have been cleared client-side (CMUX CLI clear may only dismiss badge). */
-const clearedNotificationIds = new Set<string>();
+/** Notification lines that have been cleared client-side (CMUX CLI clear may only dismiss badge). */
+const clearedNotificationLines = new Set<string>();
 
 registerBatchable(
   'cmux_notify',
@@ -1586,13 +1586,7 @@ server.tool(
     const raw = cmux('list-notifications');
     const lines = raw
       .split('\n')
-      .filter((line) => {
-        if (!line.trim()) return false;
-        // Exclude notifications that have been cleared client-side
-        const idMatch = line.match(/^([0-9A-F-]{36})/i);
-        if (idMatch && clearedNotificationIds.has(idMatch[1])) return false;
-        return true;
-      })
+      .filter((line) => line.trim() && !clearedNotificationLines.has(line.trim()))
       .join('\n');
     return ok(lines || 'No unread notifications.');
   }),
@@ -1605,12 +1599,11 @@ server.tool(
   safe(async () => {
     // Call CLI clear (dismisses badge/ring)
     cmux('clear-notifications');
-    // Also track all current notification IDs so list_notifications filters them out
+    // Track all current notification lines so list_notifications filters them out
     try {
       const raw = cmux('list-notifications');
       for (const line of raw.split('\n')) {
-        const idMatch = line.match(/^([0-9A-F-]{36})/i);
-        if (idMatch) clearedNotificationIds.add(idMatch[1]);
+        if (line.trim()) clearedNotificationLines.add(line.trim());
       }
     } catch { /* best effort */ }
     return ok('OK');
