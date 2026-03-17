@@ -1572,9 +1572,16 @@ registerBatchable(
 );
 server.tool(
   'cmux_list_notifications',
-  'List all notifications.',
+  'List unread notifications.',
   {},
-  safe(async () => ok(cmux('list-notifications'))),
+  safe(async () => {
+    const raw = cmux('list-notifications');
+    const unread = raw
+      .split('\n')
+      .filter((line) => line.includes('|unread|'))
+      .join('\n');
+    return ok(unread || 'No unread notifications.');
+  }),
 );
 
 server.tool(
