@@ -618,6 +618,12 @@ function err(message: string): { content: { type: 'text'; text: string }[]; isEr
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
+// ---------------------------------------------------------------------------
+// Batch execution registry — stores raw handlers for cmux_batch
+// ---------------------------------------------------------------------------
+
+const toolRegistry = new Map<string, { handler: (params: any) => Promise<any>; mutating: boolean }>();
+
 /** Wrap a tool handler with standard error handling */
 function safe(fn: (...args: any[]) => any) {
   return async (...args: any[]) => {
