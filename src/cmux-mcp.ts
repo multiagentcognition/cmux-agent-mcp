@@ -8,7 +8,7 @@
  */
 
 import { execFileSync, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -1135,8 +1135,9 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
   },
   safeMut(async ({ surface, direction, workspace }) => {
-    const args = ['drag-surface-to-split', '--surface', surface, direction];
+    const args = ['drag-surface-to-split'];
     if (workspace) args.push('--workspace', workspace);
+    args.push('--surface', surface, '--direction', direction);
     return ok(cmux(...args));
   }),
 );
@@ -1554,6 +1555,9 @@ server.tool(
 // H. NOTIFICATIONS
 // ============================================================================
 
+/** Notification IDs that have been cleared client-side (CMUX CLI clear may only dismiss badge). */
+const clearedNotificationIds = new Set<string>();
+
 registerBatchable(
   'cmux_notify',
   'Send a notification to a workspace/surface. Shows blue ring and sidebar highlight.',
@@ -1580,11 +1584,17 @@ server.tool(
   {},
   safe(async () => {
     const raw = cmux('list-notifications');
-    const unread = raw
+    const lines = raw
       .split('\n')
-      .filter((line) => line.includes('|unread|'))
+      .filter((line) => {
+        if (!line.trim()) return false;
+        // Exclude notifications that have been cleared client-side
+        const idMatch = line.match(/^([0-9A-F-]{36})/i);
+        if (idMatch && clearedNotificationIds.has(idMatch[1])) return false;
+        return true;
+      })
       .join('\n');
-    return ok(unread || 'No unread notifications.');
+    return ok(lines || 'No unread notifications.');
   }),
 );
 
@@ -1592,7 +1602,19 @@ server.tool(
   'cmux_clear_notifications',
   'Clear all notifications.',
   {},
-  safe(async () => ok(cmux('clear-notifications'))),
+  safe(async () => {
+    // Call CLI clear (dismisses badge/ring)
+    cmux('clear-notifications');
+    // Also track all current notification IDs so list_notifications filters them out
+    try {
+      const raw = cmux('list-notifications');
+      for (const line of raw.split('\n')) {
+        const idMatch = line.match(/^([0-9A-F-]{36})/i);
+        if (idMatch) clearedNotificationIds.add(idMatch[1]);
+      }
+    } catch { /* best effort */ }
+    return ok('OK');
+  }),
 );
 
 // ============================================================================
@@ -1669,18 +1691,22 @@ server.tool(
     const sf = surface ?? process.env['CMUX_SURFACE_ID'];
 
     // Try native browser screenshot (WKWebView takeSnapshot) first
-    let nativeFailed = false;
+    let nativeOk = false;
     try {
       const args = ['browser'];
       if (sf) args.push('--surface', sf);
       args.push('screenshot', '--out', outPath);
-      cmux(...args);
-    } catch {
-      nativeFailed = true;
-    }
+      const result = cmux(...args);
+      // Verify the file was actually created and is non-empty
+      if (existsSync(outPath) && statSync(outPath).size > 0 && !result.includes('Failed')) {
+        nativeOk = true;
+      }
+    } catch { /* fall through to screencapture */ }
 
-    if (nativeFailed || !existsSync(outPath)) {
+    if (!nativeOk) {
       // Native snapshot is unreliable — fall back to macOS screencapture
+      // Remove any empty/corrupt file from failed native attempt
+      try { if (existsSync(outPath)) unlinkSync(outPath); } catch {}
       let captured = false;
       try {
         const windowId = execSync(
@@ -1695,7 +1721,7 @@ for w in wl:
         ).trim();
         if (windowId && /^\d+$/.test(windowId)) {
           execSync(`screencapture -l ${windowId} -x "${outPath}"`, { timeout: 10_000 });
-          captured = true;
+          if (existsSync(outPath) && statSync(outPath).size > 0) captured = true;
         }
       } catch { /* fall through to full-screen capture */ }
       if (!captured) {
@@ -2563,9 +2589,10 @@ Example: launch 4 Claude agents, then orchestrate by sending each agent its spec
 
     for (const assignment of assignments) {
       try {
+        const resolved = resolvePanelRef(assignment.surface, workspace);
         const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send-panel', '--panel', assignment.surface, ...ws, assignment.text);
-        cmux('send-key-panel', '--panel', assignment.surface, ...ws, 'enter');
+        cmux('send-panel', '--panel', resolved, ...ws, assignment.text);
+        cmux('send-key-panel', '--panel', resolved, ...ws, 'enter');
         results.push({ surface: assignment.surface, sent: true });
       } catch (e: any) {
         results.push({ surface: assignment.surface, sent: false, error: e.message });
@@ -2788,12 +2815,6 @@ Supports session resume for: Claude Code (--resume/--continue), Gemini CLI (--re
 
       recoveredWorkspaces.push({ name: mw.name, surfaces: recoveredSurfaces });
     }
-
-    // Auto-save new manifest with updated refs
-    try {
-      const newManifest = captureManifest();
-      saveManifest(newManifest);
-    } catch { /* best effort */ }
 
     const allSurfaces = recoveredWorkspaces.flatMap(w => w.surfaces);
     const totalSurfaces = allSurfaces.length;
