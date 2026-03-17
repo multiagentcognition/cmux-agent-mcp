@@ -1,4 +1,4 @@
-# cmux-swarm
+# cmux-mcp
 
 CMUX MCP Server — a programmable terminal control plane for multi-agent AI workflows.
 
@@ -30,7 +30,7 @@ Turns [CMUX](https://cmux.dev) into a remote-controllable terminal multiplexer t
 |                  MCP Tool Calls                    |
 |                       |                            |
 +---------------------------------------------------+
-|                  cmux-swarm                        |
+|                  cmux-mcp                        |
 |              (this MCP server)                     |
 |                       |                            |
 |              cmux CLI commands                     |
@@ -64,7 +64,7 @@ Turns [CMUX](https://cmux.dev) into a remote-controllable terminal multiplexer t
 One command:
 
 ```bash
-npm install -g cmux-swarm
+npm install -g cmux-mcp
 ```
 
 Install automatically registers the MCP server globally for all AI coding tools:
@@ -82,16 +82,16 @@ One install, every project, every tool. Existing config files are merged — oth
 To re-run manually or for per-project setup:
 
 ```bash
-cmux-swarm init              # re-run global setup
-cmux-swarm init --project    # per-project setup (current dir)
-cmux-swarm init --root /path # per-project setup (specific dir)
+cmux-mcp init              # re-run global setup
+cmux-mcp init --project    # per-project setup (current dir)
+cmux-mcp init --root /path # per-project setup (specific dir)
 ```
 
 ### Install from source
 
 ```bash
-git clone https://github.com/AbhiShake1/cmux-swarm.git
-cd cmux-swarm
+git clone https://github.com/AbhiShake1/cmux-mcp.git
+cd cmux-mcp
 npm install --ignore-scripts
 npm run build
 node build/cli.js init       # register globally
@@ -296,7 +296,7 @@ Session IDs are detected from each CLI's session storage:
 
 ## Auto-Trust & Permissions
 
-When launching agents, cmux-swarm automatically:
+When launching agents, cmux-mcp automatically:
 - **Claude Code**: Sets `hasTrustDialogAccepted: true` in `~/.claude.json`
 - **Gemini CLI**: Adds directory to `~/.gemini/trustedFolders.json`
 - **Codex**: Adds `trust_level = "trusted"` to `~/.codex/config.toml`
