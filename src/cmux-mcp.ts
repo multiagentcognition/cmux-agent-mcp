@@ -122,6 +122,10 @@ function loadManifest(): SessionManifest | null {
 // CLI Session ID Detection
 // ---------------------------------------------------------------------------
 
+/**
+ * Detect which CLI is running in a surface by reading its output.
+ * Returns the CLI key (claude, gemini, codex, etc.) or null.
+ */
 function detectCliFromScreen(screenText: string): string | null {
   const lower = screenText.toLowerCase();
   if (lower.includes('claude') && (lower.includes('code') || lower.includes('anthropic'))) return 'claude';
@@ -132,14 +136,21 @@ function detectCliFromScreen(screenText: string): string | null {
   return null;
 }
 
-function normalizePath(p: string): string {
-  return p.replace(/\\/g, '/').replace(/\/+$/, '');
-}
-
+/**
+ * Get session ID for a CLI based on its working directory.
+ *
+ * Per-CLI session storage:
+ * - Claude: ~/.claude/sessions/{PID}.json → { sessionId, cwd }
+ * - Codex:  ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl → first line has session_meta
+ * - Gemini: ~/.gemini/projects.json maps CWD→slug, ~/.gemini/tmp/{slug}/chats/*.json
+ * - OpenCode: ~/.local/share/opencode/opencode.db (SQLite)
+ * - Goose: goose session list --format json
+ */
 function getSessionId(cli: string, cwd: string): string | null {
   try {
     switch (cli) {
       case 'claude': {
+        // Search ~/.claude/sessions/ for session files matching this CWD
         const sessionsDir = join(homedir(), '.claude', 'sessions');
         if (!existsSync(sessionsDir)) return null;
         const files = readdirSync(sessionsDir)
@@ -154,8 +165,10 @@ function getSessionId(cli: string, cwd: string): string | null {
           .filter((f): f is NonNullable<typeof f> => f !== null)
           .sort((a, b) => b.mtime - a.mtime);
 
+        // Match by CWD
         const cwdMatch = files.find(f => f.cwd && normalizePath(f.cwd) === normalizePath(cwd));
         if (cwdMatch) return cwdMatch.sessionId ?? null;
+        // Fallback: most recent session
         if (files.length > 0) return files[0]!.sessionId ?? null;
         return null;
       }
@@ -189,6 +202,7 @@ function getSessionId(cli: string, cwd: string): string | null {
             }
           } catch { continue; }
         }
+        // Fallback: newest
         if (files.length > 0) {
           try {
             const firstLine = readFileSync(files[0]!.path, 'utf8').split('\n')[0];
@@ -249,6 +263,7 @@ function getSessionId(cli: string, cwd: string): string | null {
             if (result) return result;
           } catch { /* ignore */ }
         }
+        // Fallback without CWD filter
         try {
           const dbPath = dbPaths[0]!;
           if (existsSync(dbPath)) {
@@ -280,6 +295,10 @@ function getSessionId(cli: string, cwd: string): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +378,7 @@ function buildResumeCommand(cli: string, sessionId: string | null, cwd: string):
     : '';
 
   if (!sessionId) {
+    // No session ID — try "resume latest" with fallback to fresh
     switch (cli) {
       case 'claude':
         return `(${envPrefix}${base} --continue) || (${envPrefix}${base})`;
@@ -375,10 +395,12 @@ function buildResumeCommand(cli: string, sessionId: string | null, cwd: string):
     }
   }
 
+  // Specific session ID — targeted resume
   switch (cli) {
     case 'claude':
       return `${envPrefix}${base} --resume ${sessionId}`;
     case 'gemini':
+      // Gemini only accepts "latest", not UUIDs
       return `${envPrefix}${base} --resume latest`;
     case 'codex':
       return `codex resume ${sessionId}`;
@@ -403,9 +425,11 @@ function captureManifest(): SessionManifest {
     }).trim() || null;
   } catch { /* ignore */ }
 
+  // Get the full tree to understand workspace structure
   let treeOutput: string;
   try { treeOutput = cmux('tree', '--all'); } catch { treeOutput = ''; }
 
+  // List all workspaces
   let workspaceList: string;
   try { workspaceList = cmux('list-workspaces'); } catch { workspaceList = ''; }
   const wsRefs = workspaceList.match(/workspace:\d+/g) ?? [];
@@ -413,6 +437,7 @@ function captureManifest(): SessionManifest {
   const workspaces: WorkspaceManifest[] = [];
 
   for (const wsRef of wsRefs) {
+    // Get workspace name
     let wsName = wsRef;
     try {
       const sidebar = cmux('sidebar-state', '--workspace', wsRef);
@@ -420,6 +445,7 @@ function captureManifest(): SessionManifest {
       wsName = cwdMatch?.[1]?.trim() ?? wsRef;
     } catch { /* ignore */ }
 
+    // List surfaces in this workspace
     let surfList: string;
     try { surfList = cmux('list-pane-surfaces', '--workspace', wsRef); } catch { surfList = ''; }
     const surfRefs = surfList.match(/surface:\d+/g) ?? [];
@@ -427,6 +453,7 @@ function captureManifest(): SessionManifest {
     const surfaces: SurfaceManifest[] = [];
 
     for (const surfRef of surfRefs) {
+      // Read screen to detect CLI
       let screenText = '';
       try {
         screenText = cmux('read-screen', '--surface', surfRef, '--workspace', wsRef, '--lines', '30');
@@ -434,6 +461,7 @@ function captureManifest(): SessionManifest {
 
       const cli = detectCliFromScreen(screenText) ?? 'shell';
 
+      // Get CWD from sidebar state
       let surfCwd = PROJECT_ROOT ?? homedir();
       try {
         const sidebarState = cmux('sidebar-state', '--workspace', wsRef);
@@ -441,6 +469,7 @@ function captureManifest(): SessionManifest {
         if (cwdMatch) surfCwd = cwdMatch[1]!.trim();
       } catch { /* ignore */ }
 
+      // Get session ID if it's a known CLI
       const sessionId = cli !== 'shell' ? getSessionId(cli, surfCwd) : null;
 
       surfaces.push({
@@ -464,6 +493,25 @@ function captureManifest(): SessionManifest {
     git_branch: branch,
     workspaces,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Auto-save — save manifest after mutating operations
+// ---------------------------------------------------------------------------
+
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleAutoSave(): void {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    try {
+      if (isCmuxRunning()) {
+        const manifest = captureManifest();
+        saveManifest(manifest);
+      }
+    } catch { /* best effort */ }
+    autoSaveTimer = null;
+  }, 2000); // 2 second debounce
 }
 
 // ---------------------------------------------------------------------------
@@ -498,20 +546,20 @@ function cmuxJson(...args: string[]): any {
   return JSON.parse(raw);
 }
 
-function isCmuxInstalled(): boolean {
-  const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
-  if (existsSync(bundled)) return true;
+function isCmuxRunning(): boolean {
   try {
-    execSync('which cmux', { encoding: 'utf8', timeout: 3000 });
+    cmux('ping');
     return true;
   } catch {
     return false;
   }
 }
 
-function isCmuxRunning(): boolean {
+function isCmuxInstalled(): boolean {
+  const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
+  if (existsSync(bundled)) return true;
   try {
-    cmux('ping');
+    execSync('which cmux', { encoding: 'utf8', timeout: 3000 });
     return true;
   } catch {
     return false;
@@ -562,25 +610,6 @@ function wsArgs(workspace?: string, surface?: string): string[] {
   if (ws) args.push('--workspace', ws);
   if (sf) args.push('--surface', sf);
   return args;
-}
-
-// ---------------------------------------------------------------------------
-// Auto-save — save manifest after mutating operations
-// ---------------------------------------------------------------------------
-
-let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleAutoSave(): void {
-  if (autoSaveTimer) clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => {
-    try {
-      if (isCmuxRunning()) {
-        const manifest = captureManifest();
-        saveManifest(manifest);
-      }
-    } catch { /* best effort */ }
-    autoSaveTimer = null;
-  }, 2000); // 2 second debounce
 }
 
 // ---------------------------------------------------------------------------
@@ -842,9 +871,9 @@ server.tool(
   'Rename a tab — this changes the name shown in the TAB BAR (top), NOT the sidebar. The sidebar shows workspace names (use cmux_rename_workspace for that). To rename the window title bar, use cmux_rename_window. IDs must use ref format like "tab:8", not bare numbers.',
   {
     title: z.string().describe('New tab title'),
-    workspace: z.string().optional().describe('Workspace ref'),
-    tab: z.string().optional().describe('Tab ref'),
-    surface: z.string().optional().describe('Surface ref'),
+    workspace: z.string().optional().describe('Workspace ref (e.g., "workspace:5")'),
+    tab: z.string().optional().describe('Tab ref (e.g., "tab:3")'),
+    surface: z.string().optional().describe('Surface ref (e.g., "surface:8")'),
   },
   safeMut(async ({ title, workspace, tab, surface }) => {
     const args = ['rename-tab'];
@@ -884,9 +913,9 @@ server.tool(
 
 server.tool(
   'cmux_reorder_surface',
-  'Reorder a tab within its pane.',
+  'Reorder a tab within its pane — change its position without closing it.',
   {
-    surface: z.string().describe('Surface ref to reorder'),
+    surface: z.string().describe('Surface ref to reorder (e.g., "surface:8")'),
     index: z.number().optional().describe('Target index position'),
     before: z.string().optional().describe('Place before this surface ref'),
     after: z.string().optional().describe('Place after this surface ref'),
@@ -902,9 +931,9 @@ server.tool(
 
 server.tool(
   'cmux_reorder_workspace',
-  'Reorder a workspace in the sidebar.',
+  'Reorder a workspace in the SIDEBAR — change its position without closing it.',
   {
-    workspace: z.string().describe('Workspace ref to reorder'),
+    workspace: z.string().describe('Workspace ref to reorder (e.g., "workspace:5")'),
     index: z.number().optional().describe('Target index position'),
     before: z.string().optional().describe('Place before this workspace ref'),
     after: z.string().optional().describe('Place after this workspace ref'),
@@ -924,8 +953,8 @@ server.tool(
   'cmux_move_workspace_to_window',
   'Move a workspace to a different window without closing it.',
   {
-    workspace: z.string().describe('Workspace ref to move'),
-    window: z.string().describe('Target window ref'),
+    workspace: z.string().describe('Workspace ref to move (e.g., "workspace:5")'),
+    window: z.string().describe('Target window ref (e.g., "window:1")'),
   },
   safeMut(async ({ workspace, window: win }) => {
     return ok(cmux('move-workspace-to-window', '--workspace', workspace, '--window', win));
@@ -934,9 +963,9 @@ server.tool(
 
 server.tool(
   'cmux_drag_surface_to_split',
-  'Move a tab into a split position — turns a tab into its own pane by dragging it to a side.',
+  'Move a tab into a split position — turns a tab into its own pane by dragging it to a side. Does not close the tab.',
   {
-    surface: z.string().describe('Surface ref to drag'),
+    surface: z.string().describe('Surface ref to drag (e.g., "surface:8")'),
     direction: z.enum(['left', 'right', 'up', 'down']).describe('Direction to split into'),
   },
   safeMut(async ({ surface, direction }) => {
@@ -963,9 +992,9 @@ server.tool(
 
 server.tool(
   'cmux_list_pane_surfaces',
-  'List all pane surfaces in a workspace — returns the surface refs needed by other tools.',
+  'List all pane surfaces in a workspace — returns the surface refs (e.g., "surface:8") needed by other tools.',
   {
-    workspace: z.string().optional().describe('Workspace ref'),
+    workspace: z.string().optional().describe('Workspace ref (e.g., "workspace:5")'),
   },
   safe(async ({ workspace }) => {
     const args = ['list-pane-surfaces'];
@@ -989,13 +1018,13 @@ server.tool(
 
 server.tool(
   'cmux_new_split',
-  'Split an existing pane. Direction meanings:
+  `Split an existing pane. Direction meanings:
 - "right" or "left" = side-by-side (horizontal split, vertical divider) — like Cmd+D
 - "down" or "up" = stacked top/bottom (vertical split, horizontal divider) — like Cmd+Shift+D
 When user says "vertical pane/split", they mean stacked top-bottom, so use "down".
-When user says "horizontal pane/split", they mean side-by-side, so use "right".',
+When user says "horizontal pane/split", they mean side-by-side, so use "right".`,
   {
-    direction: z.enum(['left', 'right', 'up', 'down']).describe('Split direction'),
+    direction: z.enum(['left', 'right', 'up', 'down']).describe('right/left = side-by-side, down/up = stacked top-bottom'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref to split from'),
     panel: z.string().optional().describe('Panel ID/ref to split from'),
@@ -1047,7 +1076,7 @@ server.tool(
   'Resize a pane in a direction.',
   {
     pane: z.string().describe('Pane ID/ref to resize'),
-    direction: z.enum(['L', 'R', 'U', 'D']).describe('Resize direction'),
+    direction: z.enum(['L', 'R', 'U', 'D']).describe('Resize direction (L=left, R=right, U=up, D=down)'),
     amount: z.number().optional().describe('Resize amount in cells'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
@@ -1093,9 +1122,9 @@ server.tool(
 
 server.tool(
   'cmux_join_pane',
-  'Join a pane into another pane — merges two split panes together.',
+  'Join a pane into another pane — merges two split panes together without closing either. The opposite of break-pane.',
   {
-    target_pane: z.string().describe('Target pane ref to join into'),
+    target_pane: z.string().describe('Target pane ref to join into (e.g., "pane:5")'),
     workspace: z.string().optional().describe('Workspace ref'),
     pane: z.string().optional().describe('Source pane ref to move'),
     surface: z.string().optional().describe('Surface ref'),
@@ -1162,7 +1191,7 @@ server.tool(
   'cmux_send_key',
   'Send a key press (enter, tab, escape, backspace, delete, up, down, left, right, ctrl+c, etc.).',
   {
-    key: z.string().describe('Key to send'),
+    key: z.string().describe('Key to send (e.g., enter, tab, escape, ctrl+c, up, down)'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
   },
@@ -1190,7 +1219,7 @@ server.tool(
 
 server.tool(
   'cmux_read_screen',
-  'Read terminal output from a surface.',
+  'Read terminal output from a surface. Use --scrollback to include scroll buffer.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
@@ -1233,7 +1262,7 @@ server.tool(
     key: z.string().describe('Status key (unique identifier)'),
     value: z.string().describe('Status value to display'),
     icon: z.string().optional().describe('Icon name'),
-    color: z.string().optional().describe('Color hex'),
+    color: z.string().optional().describe('Color hex (e.g., #ff0000)'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
   },
   safe(async ({ key, value, icon, color, workspace }) => {
@@ -1339,7 +1368,7 @@ server.tool(
 
 server.tool(
   'cmux_notify',
-  'Send a notification to a workspace/surface.',
+  'Send a notification to a workspace/surface. Shows blue ring and sidebar highlight.',
   {
     title: z.string().describe('Notification title'),
     subtitle: z.string().optional().describe('Notification subtitle'),
@@ -1538,7 +1567,7 @@ server.tool(
   'Get data from the browser page (url, title, text, html, value, attribute, element count).',
   {
     property: z.enum(['url', 'title', 'text', 'html', 'value', 'attr', 'count', 'box', 'styles']).describe('Property to get'),
-    selector: z.string().optional().describe('CSS selector'),
+    selector: z.string().optional().describe('CSS selector (required for text/html/value/attr/count/box/styles)'),
     attribute: z.string().optional().describe('Attribute name (required for attr)'),
     surface: z.string().optional().describe('Browser surface ID/ref'),
   },
@@ -1592,7 +1621,9 @@ server.tool(
 server.tool(
   'cmux_launch_agents',
   `Create a workspace and launch N AI coding agents in a grid layout.
-Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
+Pre-trusts the directory and configures each CLI for autonomous mode.
+Supports: ${Object.keys(CLI_DEFS).join(', ')}.
+ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent its specific task, or cmux_send_each to send different prompts to each pane, or cmux_broadcast to send the same prompt to all.`,
   {
     cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('Which AI CLI to launch'),
     count: z.number().min(1).max(12).describe('Number of agent panes'),
@@ -1618,17 +1649,26 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
     try { cmux('rename-workspace', name); } catch { /* ignore */ }
 
     // 3. Build grid by splitting
+    // Strategy: split right for columns, then split down within each
     const cols = Math.ceil(Math.sqrt(count));
     const rows = Math.ceil(count / cols);
 
+    // Create additional columns by splitting right from the first pane
     for (let c = 1; c < cols; c++) {
       try { cmux('new-split', 'right'); } catch { /* ignore */ }
     }
 
+    // For each column, split down for additional rows
+    // First, get all panes to know the column panes
+    // After splitting right N-1 times, we have N panes in a row
+    // Now split each down for rows
     if (rows > 1) {
+      // Get current panes
       let paneList: string;
       try { paneList = cmux('list-panes'); } catch { paneList = ''; }
 
+      // Split down from each existing pane to create rows
+      // We need to navigate to each column pane and split down
       for (let r = 1; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           if (r * cols + c >= count) break;
@@ -1641,12 +1681,19 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
     let finalPanes: string;
     try { finalPanes = cmux('list-pane-surfaces'); } catch { finalPanes = ''; }
 
+    // Pre-trust directory and set up config
+    ensureCliTrust(cli, workDir);
+    ensureCliConfig(cli);
+
+    // Build the CLI command
     const cliCmd = [def.bin, ...def.skipPermFlags].join(' ');
     const envPrefix = def.skipPermEnv
       ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
       : '';
     const fullCmd = envPrefix + cliCmd;
 
+    // Send the command to each pane by sending to all surfaces in the workspace
+    // Parse pane surfaces to get surface refs
     const surfaceRefs = finalPanes.match(/surface:\d+/g) ?? [];
     const launched: string[] = [];
 
@@ -1661,6 +1708,7 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
 
     // 5. Optionally send initial prompt after a brief delay
     if (prompt && launched.length > 0) {
+      // Wait a moment for CLIs to start
       await new Promise(r => setTimeout(r, 3000));
       for (const ref of launched) {
         try {
@@ -1697,6 +1745,7 @@ server.tool(
   safe(async ({ workspace, lines: lineCount }) => {
     const numLines = lineCount ?? 20;
 
+    // Get pane surfaces
     const args = ['list-pane-surfaces'];
     if (workspace) args.push('--workspace', workspace);
     let paneList: string;
@@ -1722,7 +1771,7 @@ server.tool(
 
 server.tool(
   'cmux_broadcast',
-  'Send the same text + Enter to ALL panes in a workspace.',
+  'Send the same text + Enter to ALL panes in a workspace — useful for broadcasting instructions to all agents at once.',
   {
     text: z.string().describe('Text to broadcast'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
@@ -1751,7 +1800,7 @@ server.tool(
 
 server.tool(
   'cmux_workspace_snapshot',
-  'Full workspace snapshot: tree + all pane output + sidebar state.',
+  'Full workspace snapshot: tree + all pane output + sidebar state. Single call for complete situational awareness.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     lines: z.number().optional().describe('Lines per pane (default: 20)'),
@@ -1759,6 +1808,7 @@ server.tool(
   safe(async ({ workspace, lines: lineCount }) => {
     const numLines = lineCount ?? 20;
 
+    // Tree
     let tree: string | undefined;
     try {
       const args = ['tree'];
@@ -1766,6 +1816,7 @@ server.tool(
       tree = cmux(...args);
     } catch { /* ignore */ }
 
+    // Sidebar state
     let sidebar: string | undefined;
     try {
       const args = ['sidebar-state'];
@@ -1773,6 +1824,7 @@ server.tool(
       sidebar = cmux(...args);
     } catch { /* ignore */ }
 
+    // Read all panes
     const paneArgs = ['list-pane-surfaces'];
     if (workspace) paneArgs.push('--workspace', workspace);
     let paneList: string;
@@ -1797,12 +1849,12 @@ server.tool(
 );
 
 // ============================================================================
-// K. ADDITIONAL TOOLS
+// K. ADDITIONAL TOOLS (parity with wezterm-mcp)
 // ============================================================================
 
 server.tool(
   'cmux_launch_grid',
-  'Create a workspace with an exact rows x cols grid of panes, each running an optional command.',
+  'Create a workspace with an exact rows×cols grid of panes, each running an optional command.',
   {
     rows: z.number().min(1).max(10).describe('Number of rows'),
     cols: z.number().min(1).max(10).describe('Number of columns'),
@@ -1814,11 +1866,14 @@ server.tool(
     if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
 
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
+
+    // Create workspace
     cmux('new-workspace', '--cwd', workDir);
     if (workspace_name) {
       try { cmux('rename-workspace', workspace_name); } catch { /* ignore */ }
     }
 
+    // Build grid: split right for cols, then split down for rows
     for (let c = 1; c < cols; c++) {
       try { cmux('new-split', 'right'); } catch { /* ignore */ }
     }
@@ -1831,6 +1886,7 @@ server.tool(
       }
     }
 
+    // Optionally run command in each pane
     if (command) {
       let paneList: string;
       try { paneList = cmux('list-pane-surfaces'); } catch { paneList = ''; }
@@ -1849,8 +1905,10 @@ server.tool(
 
 server.tool(
   'cmux_launch_mixed',
-  `Launch agents with DIFFERENT CLIs in one workspace.
-Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
+  `Launch agents with DIFFERENT CLIs in one workspace — e.g., 2 Claude + 1 Gemini + 1 Codex.
+Pre-trusts directories and configures each CLI for autonomous mode.
+Supports: ${Object.keys(CLI_DEFS).join(', ')}.
+ORCHESTRATION: After launching, use cmux_orchestrate to assign specific tasks to each agent.`,
   {
     agents: z.array(z.object({
       cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('CLI to use'),
@@ -1865,10 +1923,12 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
     const count = agents.length;
 
+    // Create workspace
     cmux('new-workspace', '--cwd', workDir);
     const name = workspace_name ?? `Mixed x${count}`;
     try { cmux('rename-workspace', name); } catch { /* ignore */ }
 
+    // Build grid
     const cols = Math.ceil(Math.sqrt(count));
     for (let c = 1; c < cols; c++) {
       try { cmux('new-split', 'right'); } catch { /* ignore */ }
@@ -1883,6 +1943,7 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
       }
     }
 
+    // Get surfaces and launch each CLI
     let paneList: string;
     try { paneList = cmux('list-pane-surfaces'); } catch { paneList = ''; }
     const surfaceRefs = paneList.match(/surface:\d+/g) ?? [];
@@ -1892,6 +1953,9 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
       const agent = agents[i];
       const def = CLI_DEFS[agent.cli];
       if (!def) continue;
+
+      ensureCliTrust(agent.cli, workDir);
+      ensureCliConfig(agent.cli);
 
       const envPrefix = def.skipPermEnv
         ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
@@ -1911,9 +1975,9 @@ Supports: ${Object.keys(CLI_DEFS).join(', ')}.`,
 
 server.tool(
   'cmux_send_submit_some',
-  'Send the same text + Enter to SPECIFIC surfaces (not all).',
+  'Send the same text + Enter to SPECIFIC surfaces (not all). Target by surface refs — useful when only some agents need the same instruction.',
   {
-    surface_refs: z.array(z.string()).describe('List of surface refs to target'),
+    surface_refs: z.array(z.string()).describe('List of surface refs to target (e.g., ["surface:8", "surface:10"])'),
     text: z.string().describe('Text to send and submit'),
     workspace: z.string().optional().describe('Workspace ref'),
   },
@@ -1933,9 +1997,9 @@ server.tool(
 
 server.tool(
   'cmux_send_key_all',
-  'Send a key (e.g., ctrl+c, escape) to ALL panes in a workspace.',
+  'Send a key (e.g., ctrl+c, escape) to ALL panes in a workspace. Useful for cancelling all agents.',
   {
-    key: z.string().describe('Key to send'),
+    key: z.string().describe('Key to send (e.g., ctrl+c, escape, enter)'),
     workspace: z.string().optional().describe('Workspace ref'),
   },
   safe(async ({ key, workspace }) => {
@@ -1961,9 +2025,9 @@ server.tool(
 
 server.tool(
   'cmux_send_each',
-  'Send DIFFERENT text to each pane in a workspace. Texts array maps to panes in surface order.',
+  'Send DIFFERENT text to each pane in a workspace — useful for distributing tasks after cmux_launch_agents. Texts array maps to panes in surface order.',
   {
-    texts: z.array(z.string()).describe('Array of texts, one per pane'),
+    texts: z.array(z.string()).describe('Array of texts, one per pane (in surface order)'),
     workspace: z.string().optional().describe('Workspace ref'),
   },
   safe(async ({ texts, workspace }) => {
@@ -1990,11 +2054,11 @@ server.tool(
 
 server.tool(
   'cmux_read_all_deep',
-  'Deep read of ALL panes. For idle CLI agents, prompts them and returns their summary. For busy agents, reads passively.',
+  `Deep read of ALL panes. For idle CLI agents, prompts them asking "what have you done?" and returns their summary. For busy agents, reads passively (last N lines). This is slower but gives a real briefing from each agent.`,
   {
     workspace: z.string().optional().describe('Workspace ref'),
     lines: z.number().optional().describe('Lines for non-queryable panes (default: 20)'),
-    query: z.string().optional().describe('Question to ask idle agents'),
+    query: z.string().optional().describe('Question to ask idle agents (default: "Briefly summarize what you have done and your current status.")'),
   },
   safe(async ({ workspace, lines: lineCount, query }) => {
     const numLines = lineCount ?? 20;
@@ -2011,17 +2075,23 @@ server.tool(
     for (const ref of surfaceRefs) {
       try {
         const ws = workspace ? ['--workspace', workspace] : [];
+        // Read current screen to detect state
         const screen = cmux('read-screen', '--surface', ref, ...ws, '--lines', '5');
+
+        // Simple heuristic: if screen ends with a prompt char (>, $, %), agent is idle
         const lastLine = screen.trim().split('\n').pop() ?? '';
-        const isIdle = /[>$%\u276F]\s*$/.test(lastLine) || /\?\s*$/.test(lastLine);
+        const isIdle = /[>$%❯]\s*$/.test(lastLine) || /\?\s*$/.test(lastLine);
 
         if (isIdle) {
+          // Send the query and wait for response
           cmux('send', '--surface', ref, ...ws, prompt);
           cmux('send-key', '--surface', ref, ...ws, 'enter');
+          // Wait for agent to respond
           await new Promise(r => setTimeout(r, 5000));
           const output = cmux('read-screen', '--surface', ref, ...ws, '--lines', String(numLines));
           results.push({ surface: ref, output, queried: true });
         } else {
+          // Busy — read passively
           const output = cmux('read-screen', '--surface', ref, ...ws, '--lines', String(numLines));
           results.push({ surface: ref, output, queried: false });
         }
@@ -2048,13 +2118,14 @@ server.tool(
     const workDir = cwd ?? PROJECT_ROOT ?? homedir();
     try {
       execSync(`open -a cmux "${workDir}"`, { timeout: 10_000 });
+      // Wait for it to start
       for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 1000));
         if (isCmuxRunning()) {
           return ok({ started: true, cwd: workDir });
         }
       }
-      return ok({ started: false, note: 'CMUX opened but socket not ready yet.' });
+      return ok({ started: false, note: 'CMUX opened but socket not ready yet. Try again in a moment.' });
     } catch (e: any) {
       return err(`Failed to start CMUX: ${e.message}`);
     }
@@ -2066,6 +2137,7 @@ server.tool(
   'Close ALL workspaces — full shutdown of all panes.',
   {},
   safeMut(async () => {
+    // List all workspaces and close each
     let wsList: string;
     try { wsList = cmux('list-workspaces'); } catch { return ok({ closed: 0 }); }
 
@@ -2087,20 +2159,140 @@ server.tool(
   'cmux_screenshot',
   'Take a screenshot of the CMUX window using macOS screencapture.',
   {
-    output_path: z.string().optional().describe('Output file path'),
+    output_path: z.string().optional().describe('Output file path (default: /tmp/cmux-screenshot-<timestamp>.png)'),
   },
   safe(async ({ output_path }) => {
     const ts = Date.now();
     const outPath = output_path ?? `/tmp/cmux-screenshot-${ts}.png`;
+    // Use macOS screencapture to capture the frontmost window
     try {
       execSync(`screencapture -l $(osascript -e 'tell app "cmux" to id of window 1') "${outPath}"`, {
         timeout: 10_000,
         encoding: 'utf8',
       });
     } catch {
+      // Fallback: capture the active window
       execSync(`screencapture -w "${outPath}"`, { timeout: 10_000 });
     }
     return ok({ screenshot: outPath });
+  }),
+);
+
+server.tool(
+  'cmux_open_cli',
+  `Open a single AI coding CLI in a new workspace or a new split in an existing workspace.
+Pre-trusts the directory and sets up config so the CLI starts without permission prompts.
+Supports: claude, gemini, codex, opencode, goose.`,
+  {
+    cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('Which AI CLI to launch'),
+    cwd: z.string().optional().describe('Working directory (default: project root)'),
+    workspace: z.string().optional().describe('Existing workspace ref to add a split to (omit to create new workspace)'),
+    direction: z.enum(['left', 'right', 'up', 'down']).optional().describe('Split direction if adding to existing workspace'),
+    workspace_name: z.string().optional().describe('Name for new workspace (only when creating new)'),
+    prompt: z.string().optional().describe('Initial prompt to send after CLI starts'),
+  },
+  safeMut(async ({ cli, cwd, workspace, direction, workspace_name, prompt }) => {
+    if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
+
+    const def = CLI_DEFS[cli];
+    if (!def) return err(`Unknown CLI: ${cli}`);
+
+    const workDir = cwd ?? PROJECT_ROOT ?? homedir();
+
+    // Pre-trust and configure
+    ensureCliTrust(cli, workDir);
+    ensureCliConfig(cli);
+
+    const envPrefix = def.skipPermEnv
+      ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
+      : '';
+    const fullCmd = envPrefix + [def.bin, ...def.skipPermFlags].join(' ');
+
+    let surfRef: string;
+
+    if (workspace) {
+      // Add to existing workspace as a split
+      const dir = direction ?? 'right';
+      cmux('new-split', dir, '--workspace', workspace);
+      let surfList: string;
+      try { surfList = cmux('list-pane-surfaces', '--workspace', workspace); } catch { surfList = ''; }
+      const refs = surfList.match(/surface:\d+/g) ?? [];
+      surfRef = refs[refs.length - 1] ?? 'surface:?';
+    } else {
+      // Create new workspace
+      cmux('new-workspace', '--cwd', workDir);
+      const name = workspace_name ?? def.label;
+      try { cmux('rename-workspace', name); } catch { /* ignore */ }
+      let surfList: string;
+      try { surfList = cmux('list-pane-surfaces'); } catch { surfList = ''; }
+      const refs = surfList.match(/surface:\d+/g) ?? [];
+      surfRef = refs[refs.length - 1] ?? 'surface:?';
+    }
+
+    // Launch the CLI
+    cmux('send', '--surface', surfRef, fullCmd);
+    cmux('send-key', '--surface', surfRef, 'enter');
+
+    // Set sidebar status
+    try {
+      cmux('set-status', 'cli', def.label, '--icon', 'cpu');
+    } catch { /* ignore */ }
+
+    // Optionally send initial prompt
+    if (prompt) {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        cmux('send', '--surface', surfRef, prompt);
+        cmux('send-key', '--surface', surfRef, 'enter');
+      } catch { /* ignore */ }
+    }
+
+    return ok({
+      cli,
+      surface: surfRef,
+      command: fullCmd,
+      cwd: workDir,
+      ...(prompt ? { prompt_sent: prompt } : {}),
+    });
+  }),
+);
+
+server.tool(
+  'cmux_orchestrate',
+  `Send different prompts/plans to specific surfaces in one call — the core orchestration tool.
+Use this after cmux_launch_agents or cmux_launch_mixed to distribute work to each agent.
+Example: launch 4 Claude agents, then orchestrate by sending each agent its specific task.`,
+  {
+    assignments: z.array(z.object({
+      surface: z.string().describe('Surface ref (e.g., "surface:8")'),
+      text: z.string().describe('Prompt/plan to send to this agent'),
+    })).describe('List of surface + prompt assignments'),
+    workspace: z.string().optional().describe('Workspace ref (optional)'),
+    delay_ms: z.number().optional().describe('Delay between sends in ms (default: 500)'),
+  },
+  safe(async ({ assignments, workspace, delay_ms }) => {
+    const delay = delay_ms ?? 500;
+    const results: { surface: string; sent: boolean; error?: string }[] = [];
+
+    for (const assignment of assignments) {
+      try {
+        const ws = workspace ? ['--workspace', workspace] : [];
+        cmux('send', '--surface', assignment.surface, ...ws, assignment.text);
+        cmux('send-key', '--surface', assignment.surface, ...ws, 'enter');
+        results.push({ surface: assignment.surface, sent: true });
+      } catch (e: any) {
+        results.push({ surface: assignment.surface, sent: false, error: e.message });
+      }
+      if (delay > 0) await new Promise(r => setTimeout(r, delay));
+    }
+
+    const sent = results.filter(r => r.sent).length;
+    return ok({
+      total: assignments.length,
+      sent,
+      failed: assignments.length - sent,
+      results,
+    });
   }),
 );
 
@@ -2110,7 +2302,7 @@ server.tool(
 
 server.tool(
   'cmux_session_save',
-  'Save current CMUX state to a manifest for crash recovery.',
+  'Save current CMUX state (workspaces, panes, CLIs, session IDs) to a manifest for crash recovery. Sessions are also auto-saved after every mutating operation, but you can call this manually to force an immediate save.',
   {},
   safe(async () => {
     if (!isCmuxRunning()) {
@@ -2132,17 +2324,19 @@ server.tool(
       sessions_captured: withSession,
       sessions_missing: totalSurfaces - withSession,
       note: withSession < totalSurfaces
-        ? `${totalSurfaces - withSession} surface(s) have no session ID yet.`
-        : 'All session IDs captured. Full recovery is possible.',
+        ? `${totalSurfaces - withSession} surface(s) have no session ID yet (they may be plain shells). Save again in a few seconds if CLIs are still starting.`
+        : 'All session IDs captured. Full recovery is possible — CLI conversations can be resumed.',
     });
   }),
 );
 
 server.tool(
   'cmux_session_recover',
-  'Recover a crashed CMUX session from the saved manifest.',
+  `Recover a crashed CMUX session from the saved manifest. Recreates all workspaces, panes, and RESUMES each CLI's conversation session.
+For example, if Claude Code was running with a long conversation, this will reopen Claude Code and resume that exact conversation using --resume <session_id>.
+Supports session resume for: Claude Code (--resume/--continue), Gemini CLI (--resume latest), Codex (codex resume), OpenCode (--session/--continue), Goose (session --resume).`,
   {
-    manifest_path: z.string().optional().describe('Path to manifest file'),
+    manifest_path: z.string().optional().describe('Path to manifest file (default: auto)'),
   },
   safeMut(async ({ manifest_path }) => {
     const path = manifest_path ?? MANIFEST_PATH;
@@ -2157,13 +2351,15 @@ server.tool(
       return ok({
         error: 'No session manifest found.',
         path,
-        note: 'Use cmux_session_save to create one while agents are running.',
+        note: 'Use cmux_session_save to create one while agents are running, or sessions are auto-saved after every mutating operation.',
       });
     }
 
+    // Start CMUX if needed
     if (!isCmuxRunning()) {
       try {
         execSync('open -a cmux', { timeout: 10_000 });
+        // Wait for socket
         for (let i = 0; i < 15; i++) {
           await new Promise(r => setTimeout(r, 1000));
           if (isCmuxRunning()) break;
@@ -2183,13 +2379,19 @@ server.tool(
       if (mw.surfaces.length === 0) continue;
 
       const recoveredSurfaces: RecoveredSurface[] = [];
+
+      // Create a new workspace
       const firstSurface = mw.surfaces[0]!;
       const firstCwd = firstSurface.cwd || manifest.project_root;
+
+      // Build resume command for first surface
       const firstCmd = buildResumeCommand(firstSurface.cli, firstSurface.session_id, firstCwd);
       cmux('new-workspace', '--cwd', firstCwd, '--command', firstCmd);
 
+      // Rename workspace
       try { cmux('rename-workspace', mw.name); } catch { /* ignore */ }
 
+      // Get the surface ref of the first pane we just created
       let surfList: string;
       try { surfList = cmux('list-pane-surfaces'); } catch { surfList = ''; }
       const firstRefs = surfList.match(/surface:\d+/g) ?? [];
@@ -2202,21 +2404,26 @@ server.tool(
         resumed: firstSurface.session_id !== null,
       });
 
+      // Create remaining surfaces as splits
       for (let i = 1; i < mw.surfaces.length; i++) {
         const surf = mw.surfaces[i]!;
         const surfCwd = surf.cwd || manifest.project_root;
         const cmd = buildResumeCommand(surf.cli, surf.session_id, surfCwd);
 
+        // Alternate split direction for grid layout
         const dir = i % 2 === 1 ? 'right' : 'down';
         try {
           cmux('new-split', dir);
+          // Small delay between spawns
           await new Promise(r => setTimeout(r, 500));
 
+          // Get the new surface ref
           let newSurfList: string;
           try { newSurfList = cmux('list-pane-surfaces'); } catch { newSurfList = ''; }
           const newRefs = newSurfList.match(/surface:\d+/g) ?? [];
           const newRef = newRefs[newRefs.length - 1] ?? `surface:?`;
 
+          // Send the resume command to the new split
           cmux('send', '--surface', newRef, cmd);
           cmux('send-key', '--surface', newRef, 'enter');
 
@@ -2226,12 +2433,13 @@ server.tool(
             surface_ref: newRef,
             resumed: surf.session_id !== null,
           });
-        } catch { /* ignore */ }
+        } catch { /* ignore individual failures */ }
       }
 
       recoveredWorkspaces.push({ name: mw.name, surfaces: recoveredSurfaces });
     }
 
+    // Auto-save new manifest with updated refs
     try {
       const newManifest = captureManifest();
       saveManifest(newManifest);
@@ -2249,13 +2457,14 @@ server.tool(
       resumed_with_session: withSession,
       resumed_fresh: totalSurfaces - withSession,
       details: recoveredWorkspaces,
+      note: `Recovered ${totalSurfaces} surface(s) across ${recoveredWorkspaces.length} workspace(s). ${withSession} resumed specific CLI conversations, ${totalSurfaces - withSession} started fresh.`,
     });
   }),
 );
 
 server.tool(
   'cmux_session_reconcile',
-  'Compare saved session manifest against what is actually running in CMUX.',
+  'Compare saved session manifest against what is actually running in CMUX. Reports drift: surfaces that disappeared, new ones that appeared, CLI state changes.',
   {},
   safe(async () => {
     if (!isCmuxRunning()) {
@@ -2263,6 +2472,8 @@ server.tool(
     }
 
     const manifest = loadManifest();
+
+    // Capture current live state
     const live = captureManifest();
     const liveSurfaces = live.workspaces.flatMap(w =>
       w.surfaces.map(s => ({ workspace: w.name, ...s }))
@@ -2272,7 +2483,7 @@ server.tool(
       return ok({
         has_manifest: false,
         live_surfaces: liveSurfaces.length,
-        note: 'No saved manifest. Call cmux_session_save to create one.',
+        note: 'No saved manifest. Call cmux_session_save to create one, or it will be auto-saved on the next mutating operation.',
         live: liveSurfaces,
       });
     }
@@ -2281,6 +2492,7 @@ server.tool(
       w.surfaces.map(s => ({ workspace: w.name, ...s }))
     );
 
+    // Compare by workspace name + CLI type
     const manifestClis = manifestSurfaces.map(s => `${s.workspace}/${s.cli}`);
     const liveClis = liveSurfaces.map(s => `${s.workspace}/${s.cli}`);
 
@@ -2320,117 +2532,6 @@ server.tool(
       note: inSync
         ? 'Everything matches. Manifest and live state are in sync.'
         : `Drift detected: ${disappeared.length} disappeared, ${appeared.length} new, ${sessionChanges.length} session changes.`,
-    });
-  }),
-);
-
-server.tool(
-  'cmux_open_cli',
-  `Open a single AI coding CLI in a new workspace or a new split.
-Pre-trusts the directory and sets up config.
-Supports: claude, gemini, codex, opencode, goose.`,
-  {
-    cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('Which AI CLI to launch'),
-    cwd: z.string().optional().describe('Working directory'),
-    workspace: z.string().optional().describe('Existing workspace ref to add a split to'),
-    direction: z.enum(['left', 'right', 'up', 'down']).optional().describe('Split direction'),
-    workspace_name: z.string().optional().describe('Name for new workspace'),
-    prompt: z.string().optional().describe('Initial prompt to send after CLI starts'),
-  },
-  safeMut(async ({ cli, cwd, workspace, direction, workspace_name, prompt }) => {
-    if (!isCmuxRunning()) return err('CMUX is not running. Open cmux.app first.');
-
-    const def = CLI_DEFS[cli];
-    if (!def) return err(`Unknown CLI: ${cli}`);
-
-    const workDir = cwd ?? PROJECT_ROOT ?? homedir();
-
-    ensureCliTrust(cli, workDir);
-    ensureCliConfig(cli);
-
-    const envPrefix = def.skipPermEnv
-      ? Object.entries(def.skipPermEnv).map(([k, v]) => `${k}=${v}`).join(' ') + ' '
-      : '';
-    const fullCmd = envPrefix + [def.bin, ...def.skipPermFlags].join(' ');
-
-    let surfRef: string;
-
-    if (workspace) {
-      const dir = direction ?? 'right';
-      cmux('new-split', dir, '--workspace', workspace);
-      let surfList: string;
-      try { surfList = cmux('list-pane-surfaces', '--workspace', workspace); } catch { surfList = ''; }
-      const refs = surfList.match(/surface:\d+/g) ?? [];
-      surfRef = refs[refs.length - 1] ?? 'surface:?';
-    } else {
-      cmux('new-workspace', '--cwd', workDir);
-      const name = workspace_name ?? def.label;
-      try { cmux('rename-workspace', name); } catch { /* ignore */ }
-      let surfList: string;
-      try { surfList = cmux('list-pane-surfaces'); } catch { surfList = ''; }
-      const refs = surfList.match(/surface:\d+/g) ?? [];
-      surfRef = refs[refs.length - 1] ?? 'surface:?';
-    }
-
-    cmux('send', '--surface', surfRef, fullCmd);
-    cmux('send-key', '--surface', surfRef, 'enter');
-
-    try {
-      cmux('set-status', 'cli', def.label, '--icon', 'cpu');
-    } catch { /* ignore */ }
-
-    if (prompt) {
-      await new Promise(r => setTimeout(r, 3000));
-      try {
-        cmux('send', '--surface', surfRef, prompt);
-        cmux('send-key', '--surface', surfRef, 'enter');
-      } catch { /* ignore */ }
-    }
-
-    return ok({
-      cli,
-      surface: surfRef,
-      command: fullCmd,
-      cwd: workDir,
-      ...(prompt ? { prompt_sent: prompt } : {}),
-    });
-  }),
-);
-
-server.tool(
-  'cmux_orchestrate',
-  `Send different prompts/plans to specific surfaces in one call — the core orchestration tool.
-Use this after cmux_launch_agents or cmux_launch_mixed to distribute work to each agent.`,
-  {
-    assignments: z.array(z.object({
-      surface: z.string().describe('Surface ref'),
-      text: z.string().describe('Prompt/plan to send'),
-    })).describe('List of surface + prompt assignments'),
-    workspace: z.string().optional().describe('Workspace ref'),
-    delay_ms: z.number().optional().describe('Delay between sends in ms (default: 500)'),
-  },
-  safe(async ({ assignments, workspace, delay_ms }) => {
-    const delay = delay_ms ?? 500;
-    const results: { surface: string; sent: boolean; error?: string }[] = [];
-
-    for (const assignment of assignments) {
-      try {
-        const ws = workspace ? ['--workspace', workspace] : [];
-        cmux('send', '--surface', assignment.surface, ...ws, assignment.text);
-        cmux('send-key', '--surface', assignment.surface, ...ws, 'enter');
-        results.push({ surface: assignment.surface, sent: true });
-      } catch (e: any) {
-        results.push({ surface: assignment.surface, sent: false, error: e.message });
-      }
-      if (delay > 0) await new Promise(r => setTimeout(r, delay));
-    }
-
-    const sent = results.filter(r => r.sent).length;
-    return ok({
-      total: assignments.length,
-      sent,
-      failed: assignments.length - sent,
-      results,
     });
   }),
 );
