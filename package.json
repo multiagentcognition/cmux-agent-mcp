@@ -1,6 +1,6 @@
 {
   "name": "cmux-agent-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "CMUX MCP Server — programmable terminal control plane for multi-agent AI workflows",
   "license": "PolyForm-Strict-1.0.0",
