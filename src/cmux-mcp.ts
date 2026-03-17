@@ -1131,7 +1131,7 @@ server.tool(
     workspace: z.string().optional().describe('Workspace ID/ref (default: current)'),
   },
   safeMut(async ({ surface, direction, workspace }) => {
-    const args = ['drag-surface-to-split', '--surface', surface, '--direction', direction];
+    const args = ['drag-surface-to-split', '--surface', surface, direction];
     if (workspace) args.push('--workspace', workspace);
     return ok(cmux(...args));
   }),
