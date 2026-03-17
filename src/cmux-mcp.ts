@@ -1666,11 +1666,43 @@ server.tool(
   },
   safe(async ({ out, surface }) => {
     const outPath = out ?? `/tmp/cmux-screenshot-${Date.now()}.png`;
-    const args = ['browser'];
     const sf = surface ?? process.env['CMUX_SURFACE_ID'];
-    if (sf) args.push('--surface', sf);
-    args.push('screenshot', '--out', outPath);
-    cmux(...args);
+
+    // Try native browser screenshot (WKWebView takeSnapshot) first
+    let nativeFailed = false;
+    try {
+      const args = ['browser'];
+      if (sf) args.push('--surface', sf);
+      args.push('screenshot', '--out', outPath);
+      cmux(...args);
+    } catch {
+      nativeFailed = true;
+    }
+
+    if (nativeFailed || !existsSync(outPath)) {
+      // Native snapshot is unreliable — fall back to macOS screencapture
+      let captured = false;
+      try {
+        const windowId = execSync(
+          `python3 -c "
+import Quartz
+wl = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+for w in wl:
+    if w.get('kCGWindowOwnerName','') == 'cmux':
+        print(w['kCGWindowNumber']); break
+"`,
+          { timeout: 5_000, encoding: 'utf8' },
+        ).trim();
+        if (windowId && /^\d+$/.test(windowId)) {
+          execSync(`screencapture -l ${windowId} -x "${outPath}"`, { timeout: 10_000 });
+          captured = true;
+        }
+      } catch { /* fall through to full-screen capture */ }
+      if (!captured) {
+        execSync(`screencapture -x "${outPath}"`, { timeout: 10_000 });
+      }
+    }
+
     const data = readFileSync(outPath).toString('base64');
     return {
       content: [
