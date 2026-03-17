@@ -10,52 +10,41 @@
 
 You are the **orchestrator**. You do NOT run the tests yourself. You use cmux-agent-mcp to spawn 6 Claude agents, distribute test groups to each, collect results via MACP, and produce the final report.
 
-### Phase 1: Setup the Grid (this workspace)
+### Phase 1: Launch all 6 runners (ONE tool call)
 
-1. Call `cmux_launch_grid` with `rows: 3`, `cols: 2`, `workspace_name: "Test Runners"`.
-2. Record all 6 surface refs from the response.
-3. Rename each tab to its test group using `cmux_rename_tab`:
-   - Surface 1 → "Runner A: Status+WS+Win"
-   - Surface 2 → "Runner B: Surfaces+Panes"
-   - Surface 3 → "Runner C: Text IO+Bulk"
-   - Surface 4 → "Runner D: Sidebar+Move"
-   - Surface 5 → "Runner E: Launchers+Sessions"
-   - Surface 6 → "Runner F: Browser+Find"
-
-### Phase 2: Launch Claude in each pane
-
-For each of the 6 surfaces, use `cmux_send_submit` to launch Claude Code:
-
-```
-claude --dangerously-skip-permissions
-```
-
-Wait 5 seconds for all CLIs to start. Verify with `cmux_read_all` that all 6 show Claude prompts.
-
-### Phase 3: Send MACP registration + test instructions
-
-Use `cmux_orchestrate` to send each agent its specific test group. Each agent's prompt should include:
-
-1. The MACP project ID (`sensei`) so it can send results back
-2. Its assigned test sections (copied verbatim from the Test Groups below)
-3. Instructions to report results via `macp_send_channel` when done
-
-Send each runner its prompt from the **Test Groups** section below using `cmux_orchestrate`:
+Call `cmux_launch_agents` with ALL of the following in a SINGLE call:
 
 ```json
 {
+  "cli": "claude",
+  "count": 6,
+  "workspace_name": "Test Runners",
+  "tab_names": [
+    "Runner A: Status+WS+Win",
+    "Runner B: Surfaces+Panes",
+    "Runner C: Text IO+Bulk",
+    "Runner D: Sidebar+Move",
+    "Runner E: Launchers+Sessions",
+    "Runner F: Browser+Find"
+  ],
   "assignments": [
-    {"surface": "<surf1>", "text": "<RUNNER_A_PROMPT>"},
-    {"surface": "<surf2>", "text": "<RUNNER_B_PROMPT>"},
-    {"surface": "<surf3>", "text": "<RUNNER_C_PROMPT>"},
-    {"surface": "<surf4>", "text": "<RUNNER_D_PROMPT>"},
-    {"surface": "<surf5>", "text": "<RUNNER_E_PROMPT>"},
-    {"surface": "<surf6>", "text": "<RUNNER_F_PROMPT>"}
-  ]
+    "<RUNNER_A_PROMPT>",
+    "<RUNNER_B_PROMPT>",
+    "<RUNNER_C_PROMPT>",
+    "<RUNNER_D_PROMPT>",
+    "<RUNNER_E_PROMPT>",
+    "<RUNNER_F_PROMPT>"
+  ],
+  "progress": 0.15,
+  "progress_label": "Tests dispatched to 6 runners..."
 }
 ```
 
-Each runner prompt should follow this template:
+This single call does everything: creates the workspace, builds the 3×2 grid, launches Claude Code in all 6 panes, waits for CLIs to start, renames each tab, sends each runner its unique prompt, and sets the progress bar. The response includes `surfaces` (all 6 surface refs) and `workspace_ref`.
+
+**DO NOT use `cmux_launch_grid` — that creates empty panes without CLIs. DO NOT make separate calls for renaming tabs, launching CLIs, or sending prompts. `cmux_launch_agents` does it all.**
+
+Each runner's prompt (the `assignments` array) should follow this template:
 
 ```
 You are test runner [A-F]. Execute the test steps below using cmux-agent-mcp MCP tools.

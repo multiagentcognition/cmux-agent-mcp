@@ -1762,11 +1762,11 @@ server.tool(
 
 registerBatchable(
   'cmux_launch_agents',
-  `Create a workspace and launch N AI coding agents in a grid layout.
+  `THE primary tool for launching AI agent swarms. Creates workspace, builds grid, launches CLIs, and optionally sends prompts — all in ONE call. Returns surface refs for all agents.
 Pre-trusts the directory and configures each CLI for autonomous mode.
 Supports: ${Object.keys(CLI_DEFS).join(', ')}.
-ORCHESTRATION WORKFLOW: After launching, use cmux_orchestrate to send each agent its specific task, or cmux_send_each to send different prompts to each pane, or cmux_broadcast to send the same prompt to all.
-INLINE ORCHESTRATION: You can also pass assignments, tab_names, status, and progress directly to do everything in one call.`,
+PREFER THIS over cmux_launch_grid when you need AI agents. cmux_launch_grid creates empty panes; this tool launches actual CLIs.
+INLINE ORCHESTRATION: Pass assignments (different prompt per agent), tab_names, status, and progress to do everything in one call — no follow-up calls needed.`,
   {
     cli: z.enum(['claude', 'gemini', 'codex', 'opencode', 'goose']).describe('Which AI CLI to launch'),
     count: z.number().min(1).max(12).describe('Number of agent panes'),
@@ -2022,7 +2022,8 @@ server.tool(
 
 registerBatchable(
   'cmux_launch_grid',
-  'Create a workspace with an exact rows×cols grid of panes, each running an optional command.',
+  `Create a workspace with an exact rows×cols grid of EMPTY terminal panes, each running an optional shell command. Returns surface refs for all panes.
+NOTE: This does NOT launch AI coding CLIs. To launch Claude/Gemini/Codex agents in a grid, use cmux_launch_agents instead — it creates the grid, launches CLIs, and can send prompts, all in one call.`,
   {
     rows: z.number().min(1).max(10).describe('Number of rows'),
     cols: z.number().min(1).max(10).describe('Number of columns'),
@@ -2069,7 +2070,8 @@ registerBatchable(
       }
     }
 
-    return ok({ grid: `${rows}x${cols}`, total: rows * cols, workspace: workspace_name });
+    const finalSurfaces = allSurfaceRefs(wsRef ?? undefined);
+    return ok({ grid: `${rows}x${cols}`, total: rows * cols, workspace: workspace_name, workspace_ref: wsRef, surfaces: finalSurfaces });
   }, true,
 );
 
