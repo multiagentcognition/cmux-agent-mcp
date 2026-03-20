@@ -709,9 +709,6 @@ function unwrapOk(result: any): unknown {
 /** Wrap a tool handler with standard error handling */
 /** Enrich common errors with actionable suggestions */
 function enrichError(msg: string): string {
-  if (msg.includes('Surface is not a terminal')) {
-    return msg + '\n\nHINT: This surface is running an AI CLI. Use cmux_read_all (not cmux_read_screen) to read, and cmux_orchestrate (not cmux_send/cmux_send_submit) to send prompts.';
-  }
   return msg;
 }
 
@@ -1464,7 +1461,7 @@ server.tool(
 
 server.tool(
   'cmux_read_screen',
-  'Read terminal output from a PLAIN TERMINAL surface. DOES NOT work on surfaces running AI CLIs (Claude, Gemini, etc.) — those return "Surface is not a terminal". To read from AI agent surfaces, use cmux_read_all or cmux_read_all_deep instead. Use --scrollback to include scroll buffer.',
+  'Read terminal output from a single surface. Works on all surface types. Use --scrollback to include scroll buffer. For reading ALL surfaces at once, use cmux_read_all instead.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
@@ -1481,7 +1478,7 @@ server.tool(
 
 server.tool(
   'cmux_capture_pane',
-  'Capture pane output (tmux-compatible). Same limitations as cmux_read_screen — only works on plain terminal surfaces, NOT AI CLI surfaces.',
+  'Capture pane output (tmux-compatible). Works on all surface types.',
   {
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
