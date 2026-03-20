@@ -512,17 +512,6 @@ function loadAutoSave(): SessionManifest | null {
 
 
 // ---------------------------------------------------------------------------
-// CMUX CLI Helpers (legacy — kept for cmuxBin reference)
-// ---------------------------------------------------------------------------
-
-function cmuxBin(): string {
-  if (process.env['CMUX_BIN']) return process.env['CMUX_BIN'];
-  const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
-  if (existsSync(bundled)) return bundled;
-  return 'cmux';
-}
-
-// ---------------------------------------------------------------------------
 // CMUX Transport — persistent socket with CLI fallback for unsupported methods
 // ---------------------------------------------------------------------------
 
@@ -640,14 +629,8 @@ async function allPanelRefs(workspace?: string): Promise<string[]> {
 }
 
 function isCmuxInstalled(): boolean {
-  const bundled = '/Applications/cmux.app/Contents/Resources/bin/cmux';
-  if (existsSync(bundled)) return true;
-  try {
-    execSync('which cmux', { encoding: 'utf8', timeout: 3000 });
-    return true;
-  } catch {
-    return false;
-  }
+  // Socket is initialized at startup — if it connected, CMUX is installed and running
+  return socket !== null;
 }
 
 // ---------------------------------------------------------------------------
