@@ -2945,6 +2945,13 @@ server.tool(
 // ---------------------------------------------------------------------------
 
 export async function runServer(): Promise<void> {
+  // Initialize persistent socket connection to CMUX
+  try {
+    await initTransport();
+  } catch (e: any) {
+    process.stderr.write(`[cmux-agent-mcp] Socket init failed: ${e.message}\n`);
+    // Server still starts — CLI-only commands will work, socket commands will fail with clear errors
+  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
