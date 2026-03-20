@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { CmuxSocket, cliArgsToSocketCall, formatResponse } from './cmux-socket.js';
 
 // ---------------------------------------------------------------------------
 // Server Configuration
@@ -509,6 +510,17 @@ function loadAutoSave(): SessionManifest | null {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// CMUX Transport — persistent socket with CLI fallback for unsupported methods
+// ---------------------------------------------------------------------------
+
+let socket: CmuxSocket | null = null;
+
+async function initTransport(): Promise<void> {
+  socket = new CmuxSocket();
+  await socket.connect();
+}
 
 // ---------------------------------------------------------------------------
 // CMUX CLI Helpers
