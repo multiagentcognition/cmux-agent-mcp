@@ -1369,21 +1369,32 @@ server.tool(
 
 server.tool(
   'cmux_send',
-  'Send text to a PLAIN TERMINAL surface without pressing Enter. DOES NOT work on AI CLI surfaces — use cmux_orchestrate, cmux_broadcast, or cmux_send_each for agent surfaces.',
+  'Send text to a surface without pressing Enter. Works on all surface types (plain terminals and AI CLI agents).',
   {
     text: z.string().describe('Text to send'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
   },
   safe(async ({ text, workspace, surface }) => {
-    const args = ['send', ...wsArgs(workspace, surface), text];
-    return ok(await cmux(...args));
+    const ws = wsArgs(workspace, surface);
+    try {
+      return ok(await cmux('send', ...ws, text));
+    } catch (e: any) {
+      if (e.message?.includes('not a terminal')) {
+        const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+        if (sf) {
+          await cmux('send-panel', '--panel', sf, ...(workspace ? ['--workspace', workspace] : []), text);
+          return ok({ sent: text });
+        }
+      }
+      throw e;
+    }
   }),
 );
 
 server.tool(
   'cmux_send_submit',
-  'Send text and press Enter to a PLAIN TERMINAL surface. DOES NOT work on AI CLI surfaces (returns "Surface is not a terminal"). To send prompts to AI agents, use cmux_orchestrate, cmux_broadcast, or cmux_send_each instead.',
+  'Send text and press Enter to a surface. Works on all surface types (plain terminals and AI CLI agents).',
   {
     text: z.string().describe('Text to send'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
@@ -1391,23 +1402,46 @@ server.tool(
   },
   safeMut(async ({ text, workspace, surface }) => {
     const ws = wsArgs(workspace, surface);
-    await cmux('send', ...ws, text);
-    await cmux('send-key', ...ws, 'enter');
+    try {
+      await cmux('send', ...ws, text);
+      await cmux('send-key', ...ws, 'enter');
+    } catch (e: any) {
+      if (e.message?.includes('not a terminal')) {
+        const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+        if (sf) {
+          const wsFlag = workspace ? ['--workspace', workspace] : [];
+          await cmux('send-panel', '--panel', sf, ...wsFlag, text);
+          await cmux('send-key-panel', '--panel', sf, ...wsFlag, 'enter');
+        } else { throw e; }
+      } else { throw e; }
+    }
     return ok({ sent: text, submitted: true });
   }),
 );
 
 server.tool(
   'cmux_send_key',
-  'Send a key press to a PLAIN TERMINAL surface (enter, tab, escape, backspace, delete, up, down, left, right, ctrl+c, etc.). DOES NOT work on AI CLI surfaces — use cmux_send_key_all for agent workspaces.',
+  'Send a key press to a surface (enter, tab, escape, backspace, delete, up, down, left, right, ctrl+c, etc.). Works on all surface types.',
   {
     key: z.string().describe('Key to send (e.g., enter, tab, escape, ctrl+c, up, down)'),
     workspace: z.string().optional().describe('Workspace ID/ref'),
     surface: z.string().optional().describe('Surface ID/ref'),
   },
   safe(async ({ key, workspace, surface }) => {
-    const args = ['send-key', ...wsArgs(workspace, surface), key];
-    return ok(await cmux(...args));
+    const ws = wsArgs(workspace, surface);
+    try {
+      return ok(await cmux('send-key', ...ws, key));
+    } catch (e: any) {
+      if (e.message?.includes('not a terminal')) {
+        const sf = surface ?? process.env['CMUX_SURFACE_ID'];
+        if (sf) {
+          const wsFlag = workspace ? ['--workspace', workspace] : [];
+          await cmux('send-key-panel', '--panel', sf, ...wsFlag, key);
+          return ok({ key_sent: key });
+        }
+      }
+      throw e;
+    }
   }),
 );
 
